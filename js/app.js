@@ -1,0 +1,195 @@
+// Point d'entrée : connexion, navigation par rôle, abonnement aux données, événements.
+import { store, MODE_REEL, COLS } from './store.js';
+import { S, $, esc, setRender, render, toast, modal, closeModal, confirmer, aujourdhui, ajouterJours, pret } from './ui.js';
+import { besoins } from './donnees.js';
+import * as core from './views-core.js';
+import * as act from './views-activites.js';
+import * as eq from './views-equipe.js';
+import * as ann from './annuaire.js';
+import { installerRecherche, oublierRecents, champRecherche, itemPersonne, itemContact, itemActivite, AIDE_PERSONNE } from './recherche.js';
+import * as imp from './importer.js';
+import * as pwa from './pwa.js';
+import * as sec from './securite.js';
+import { VERSION } from './version.js';
+import * as pa from './parametres.js';
+import { P, moduleActif } from './parametres.js';
+
+const NAV = {
+  admin: [['home', 'Accueil', '⌂'], ['seniors', 'Personnes', '☺'], ['activites', 'Activités', '♥'], ['planning', 'Planning', '▦'], ['taches', 'Tâches', '✓'], ['bilans', 'Bilans', '▮'], ['annuaire', 'Annuaire', '☎'], ['equipe', 'Équipe', '☻'], ['parametres', 'Paramètres', '⚙'], ['sauvegarde', 'Sécurité', '⛨']],
+  intervenant: [['activites', 'Mes activités', '♥'], ['planning', 'Planning', '▦']],
+  benevole: [['planning', 'Planning', '▦']]
+};
+// Modules facultatifs : masqués du menu quand l'administratrice les désactive (Paramètres)
+const FACULTATIFS = { taches: 'taches', bilans: 'bilans' };
+const navPour = role => (NAV[role] || []).filter(([k]) => !(k in FACULTATIFS) || moduleActif(FACULTATIFS[k]));
+const ACCUEIL = { admin: 'home', intervenant: 'activites', benevole: 'planning' };
+
+/* ---------- Données ---------- */
+// Chargement à la demande : on ne s'abonne qu'à ce que l'écran ouvert affiche (voir donnees.js). Chaque abonnement n'est créé qu'une fois.
+let unsubs = [], parts = {}, actifs = new Set(), minuteurPurge = null, rendu = false;
+const COLS_ECOUTE = COLS.concat(['users', 'corbeille', 'journal', 'parametres', 'contacts']);
+function planifierRendu() { if (rendu) return; rendu = true; Promise.resolve().then(() => { rendu = false; render(); }); }
+function listen(col, key, filtre, opts) {
+  unsubs.push(store.subscribe(col, (rows, err) => {
+    (parts[col] = parts[col] || {})[key] = rows; S.pret.add(col + '|' + key);
+    // un même document peut figurer dans plusieurs abonnements : on ne le garde qu'une fois
+    const m = new Map(); for (const lot of Object.values(parts[col])) for (const r of lot) m.set(r.id, r);
+    S.cache[col] = [...m.values()];
+    S.erreur = err ? `Lecture impossible (${col}) : ${err.code || err.message}. Vérifiez les règles de sécurité.` : '';
+    planifierRendu();
+  }, filtre, opts));
+}
+function synchroniser() {
+  const u = S.user; if (!u || !u.role) return;
+  const mes = (u.activites || []);
+  for (const b of besoins({ role: u.role, view: S.view, actId: S.actId, mois: S.moisPlan || { a: new Date().getFullYear(), m: new Date().getMonth() }, stat: S.stat,
+    rechGlobale: S.rechGlobale, onglet: sec.ongletCourant(), auj: aujourdhui(), horizonSorties: ajouterJours(aujourdhui(), 60), activites: S.cache.activites, mesActivites: mes })) {
+    const k = b.col + '|' + b.key; if (actifs.has(k)) continue;
+    actifs.add(k); listen(b.col, b.key, b.filtre, b.opts);
+  }
+  // Écran « Activités » : places prises par activité, comptées côté serveur (beaucoup moins de lectures que de tout télécharger)
+  if (u.role === 'admin' && S.view === 'activites' && S.compteursNav !== S.navId && S.cache.activites.length) { S.compteursNav = S.navId; compterPlaces(S.navId); }
+}
+async function compterPlaces(navId) {
+  const res = {};
+  try {
+    // deux comptages par activité, filtres d'égalité seulement (aucun index à créer) : retenus = total - en attente
+    for (const a of S.cache.activites) {
+      const total = await store.nombre('inscriptions', ['activiteId', '==', a.id]);
+      const att = await store.nombre('inscriptions', [['activiteId', '==', a.id], ['statut', '==', 'attente']]);
+      res[a.id] = { r: total - att, att };
+    }
+    if (navId === S.navId && S.user) { S.compteurs = res; planifierRendu(); }
+  } catch (e) { console.warn('comptage des places', e); }
+}
+function demarrer() {
+  arreter();
+  if (S.user && S.user.role === 'admin') minuteurPurge = setTimeout(sec.purger, 5000);
+  synchroniser();
+}
+function arreter() { clearTimeout(minuteurPurge); unsubs.forEach(u => u()); unsubs = []; parts = {}; actifs = new Set(); S.pret = new Set(); S.rechGlobale = false; S.compteurs = {}; S.compteursNav = -1; COLS_ECOUTE.forEach(c => { S.cache[c] = []; }); }
+
+/* ---------- Écrans ---------- */
+function ecranConnexion() {
+  return `<div class="login"><div class="card"><h1>${esc(P('nomOutil'))}</h1><p class="sub">${esc(P('nomService'))}</p>
+  ${MODE_REEL ? `<form id="fl"><div class="field"><label for="em">Adresse e-mail</label><input id="em" type="email" autocomplete="username" required></div>
+    <div class="field"><label for="pw">Mot de passe</label><input id="pw" type="password" autocomplete="current-password" required></div>
+    <div id="lerr" class="err" style="display:none" role="alert"></div>
+    <div class="quick" style="margin-top:12px"><button class="btn" type="submit">Se connecter</button><button class="btn ghost" type="button" data-action="reset-mdp">Mot de passe oublié</button></div></form>`
+  : `<p>Mode démonstration : les données sont fictives et restent dans ce navigateur. Choisissez une vue pour essayer l'outil.</p>
+    <div class="quick" style="flex-direction:column;align-items:stretch">
+    <button class="btn" data-action="demo" data-v="admin">Essayer comme administratrice (accès complet)</button>
+    <button class="btn blue" data-action="demo" data-v="intervenant">Essayer comme intervenante (appel de son atelier)</button>
+    <button class="btn sec" data-action="demo" data-v="benevole">Essayer comme bénévole (planning)</button></div>`}${pwa.boutonInstaller(true)}</div></div>`;
+}
+function ecranSansRole() {
+  return `<div class="login"><div class="card"><h1>Accès à activer</h1><p>Votre compte (${esc(S.user.email)}) est bien connecté, mais aucun rôle ne lui a encore été attribué. Demandez à l'administratrice de l'activer.</p>
+  ${S.user.erreur ? `<div class="err">${esc(S.user.erreur)}</div>` : ''}<button class="btn" data-action="logout">Se déconnecter</button></div></div>`;
+}
+function nav() {
+  const items = navPour(S.user.role);
+  const courante = S.view === 'activite' ? 'activites' : S.view;
+  return `<div class="brand"><i>${esc(P('nomOutil')[0])}</i>${esc(P('nomOutil'))}</div>` + (S.user.role === 'admin' ? '<button class="nav-btn" data-action="rech-globale" style="background:rgba(255,255,255,.14)"><span aria-hidden="true" style="width:20px;text-align:center">⌕</span><span>Chercher</span></button>' : '') + items.map(([k, l, ic]) =>
+    `<button class="nav-btn" data-action="nav" data-v="${k}" ${courante === k ? 'aria-current="page"' : ''}><span aria-hidden="true" style="width:20px;text-align:center">${ic}</span><span>${l}</span></button>`).join('') +
+    `<div class="foot"><div>${esc(S.user.nom)}</div><div style="font-size:12px;opacity:.7">Version ${VERSION}</div>${MODE_REEL ? '<button class="nav-btn" style="padding:6px 0;font-size:13px" data-action="mdp-form">Mon mot de passe</button>' : ''}${pwa.boutonInstaller()}<button class="nav-btn" style="padding:6px 0" data-action="logout">Se déconnecter</button>${MODE_REEL ? '' : '<button class="nav-btn" style="padding:6px 0;font-size:13px" data-action="reset-demo">Remettre les données de démonstration</button>'}</div>`;
+}
+const VUES = { home: core.accueil, seniors: core.seniors, taches: core.taches, planning: core.planning, bilans: core.bilans, activites: act.activites, activite: act.activite, annuaire: ann.annuaire, equipe: eq.equipe, sauvegarde: sec.securite, parametres: pa.parametres };
+
+setRender(() => {
+  synchroniser();
+  const main = $('#main'), side = $('#nav'), banner = $('#banner');
+  banner.innerHTML = MODE_REEL ? '' : '<div class="demo-banner">Mode démonstration : données fictives, enregistrées uniquement dans ce navigateur</div>';
+  if (!S.user) { side.innerHTML = ''; side.style.display = 'none'; document.querySelector('.app').style.display = 'block'; main.innerHTML = ecranConnexion(); return; }
+  if (!S.user.role) { side.style.display = 'none'; main.innerHTML = ecranSansRole(); return; }
+  document.querySelector('.app').style.display = ''; side.style.display = '';
+  const autorisees = navPour(S.user.role).map(x => x[0]).concat(['admin', 'intervenant'].includes(S.user.role) ? ['activite'] : []);
+  if (!autorisees.includes(S.view)) S.view = ACCUEIL[S.user.role];
+  side.innerHTML = nav();
+  const faible = MODE_REEL && S.mdpLongueur && S.mdpLongueur < P('securite.motDePasseMin') ? `<div class="err" role="alert" style="background:#fff6e0;border-color:#e0b060;color:#5a3a00"><b>Votre mot de passe est trop court</b> (minimum ${P('securite.motDePasseMin')} caractères). <button class="btn sec" data-action="mdp-form" style="margin-left:8px">Le changer maintenant</button></div>` : '';
+  main.innerHTML = faible + (S.erreur ? `<div class="err" role="alert">${esc(S.erreur)}</div>` : '') + (VUES[S.view] || core.accueil)();
+  if (S.view === 'seniors') core.afterSeniors();
+  if (S.view === 'annuaire') ann.apresAnnuaire();
+  if (S.view === 'sauvegarde') sec.apresSecurite();
+});
+
+/* ---------- Événements ---------- */
+const actions = {
+  ...core.actions, ...act.actions, ...eq.actions, ...ann.actions, ...sec.actions, ...pa.actions, ...imp.actions, ...pwa.actions,
+  'rech-globale': () => rechGlobale(),
+  close: () => closeModal(),
+  logout: async () => { oublierRecents(); S.mdpLongueur = 0; await store.signOut(); },
+  'mdp-form': () => {
+    const min = P('securite.motDePasseMin');
+    modal(`<h2>Changer mon mot de passe</h2><p class="sub">Au moins ${min} caractères. Choisissez un mot de passe que vous n'utilisez nulle part ailleurs (une phrase facile à retenir fonctionne très bien).</p>
+    <div class="field"><label for="m0">Mot de passe actuel</label><input id="m0" type="password" autocomplete="current-password"></div>
+    <div class="field"><label for="m1">Nouveau mot de passe</label><input id="m1" type="password" autocomplete="new-password"></div>
+    <div class="field"><label for="m2">Nouveau mot de passe (encore une fois)</label><input id="m2" type="password" autocomplete="new-password"></div>
+    <div id="merr" class="err" style="display:none" role="alert"></div>
+    <div class="quick" style="margin-top:14px"><button class="btn" id="mok">Changer</button><button class="btn ghost" data-action="close">Annuler</button></div>`);
+    $('#mok').onclick = async () => {
+      const a = $('#m0').value, n = $('#m1').value, e = $('#merr'); e.style.display = 'block';
+      if (n.length < min) return void (e.textContent = `Le nouveau mot de passe doit faire au moins ${min} caractères.`);
+      if (n !== $('#m2').value) return void (e.textContent = 'Les deux saisies ne sont pas identiques.');
+      if (n === a) return void (e.textContent = 'Choisissez un mot de passe différent de l\'actuel.');
+      try { await store.changerMdp(a, n); S.mdpLongueur = n.length; closeModal(); toast('Mot de passe changé'); render(); }
+      catch (x) { e.textContent = /wrong-password|invalid-credential/.test(x.code || '') ? 'Le mot de passe actuel est incorrect.' : /weak-password/.test(x.code || '') ? 'Mot de passe refusé : trop faible.' : 'Impossible : ' + (x.message || x.code); }
+    };
+  },
+  demo: async el => { await store.signInDemo(el.dataset.v); },
+  'reset-demo': () => confirmer('Remettre les données de démonstration ?', 'Tout ce que vous avez saisi dans ce navigateur sera remplacé par les exemples.', 'Remettre', () => store.reset()),
+  'reset-mdp': async () => {
+    const em = $('#em').value.trim(); if (!em) return toast('Saisissez d\'abord votre adresse e-mail.');
+    try { await store.resetMdp(em); toast('Si cette adresse existe, un e-mail de réinitialisation vient d\'être envoyé.'); } catch (e) { toast('Envoi impossible : ' + e.message); }
+  }
+};
+// Recherche globale : une personne, un contact ou une activité, en tapant quelques lettres (nom, prénom, nom de jeune fille, date de naissance, métier…)
+async function rechGlobale() {
+  S.rechGlobale = true; render();
+  modal('<h2>Chercher</h2><p class="sub">Chargement…</p>');
+  for (let i = 0; i < 50 && !(pret('seniors') && pret('contacts')); i++) await new Promise(r => setTimeout(r, 100));
+  const avec = (it, type, pre) => ({ ...it, type, sous: [pre, it.sous].filter(Boolean).join(' · ') });
+  modal(`<h2>Chercher</h2>${champRecherche({ id: 'rg', label: 'Une personne, un contact ou une activité', aide: AIDE_PERSONNE + ' Ou un métier, un nom d\'activité.', mode: 'action', recents: 'global', placeholder: 'Tapez pour chercher…',
+    items: () => [...S.cache.seniors.map(s => avec(itemPersonne(s), 'senior', 'Personne')), ...S.cache.contacts.map(c => avec(itemContact(c), 'contact', c.categorie)), ...S.cache.activites.map(a => avec(itemActivite(a), 'activite', 'Activité'))],
+    onChoose: o => { if (!o) return; closeModal(); const ouvrir = { senior: 'senior-form', contact: 'contact-form', activite: 'open-act' }[o.type]; actions[ouvrir]({ dataset: { id: o.id } }); } })}
+  <p class="sub">Choisissez un résultat pour ouvrir sa fiche.</p>`);
+  const champ = $('#rg'); if (champ) champ.focus();
+}
+const changes = { ...core.changes, ...act.changes, ...ann.changes };
+
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-action]'); if (!el || el.tagName === 'INPUT' && el.type === 'checkbox') return;
+  const f = actions[el.dataset.action];
+  if (f) { e.preventDefault(); Promise.resolve(f(el, e)).catch(err => { console.error(err); toast('Erreur : ' + err.message); }); }
+});
+document.addEventListener('change', e => {
+  const el = e.target.closest('[data-change],[data-action]'); if (!el) return;
+  const f = changes[el.dataset.change || el.dataset.action];
+  if (f) Promise.resolve(f(e.target)).catch(err => { console.error(err); toast('Erreur : ' + err.message); });
+});
+document.addEventListener('submit', async e => {
+  if (e.target.id !== 'fl') return;
+  e.preventDefault();
+  const err = $('#lerr'); err.style.display = 'none';
+  try { S.mdpLongueur = $('#pw').value.length; await store.signIn($('#em').value.trim(), $('#pw').value); }
+  catch (x) {
+    S.mdpLongueur = 0;
+    const c = x.code || '';
+    err.textContent = /invalid-credential|wrong-password|user-not-found|invalid-email/.test(c) ? 'Adresse e-mail ou mot de passe incorrect.' : /too-many/.test(c) ? 'Trop d\'essais : patientez quelques minutes ou réinitialisez votre mot de passe.' : 'Connexion impossible : ' + (x.message || c);
+    err.style.display = 'block';
+  }
+});
+installerRecherche();
+pwa.enregistrer();
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+/* ---------- Démarrage ---------- */
+(async () => {
+  try {
+    await store.init();
+    store.onAuth(u => { S.user = u; if (u && u.role) { S.view = ACCUEIL[u.role]; demarrer(); } else arreter(); render(); });
+    if (!MODE_REEL) { /* démo : onAuth a déjà appelé le rappel avec null */ }
+    render();
+  } catch (e) {
+    $('#main').innerHTML = `<div class="login"><div class="card"><h1>Démarrage impossible</h1><div class="err">${esc(e.message)}</div><p>Vérifiez la connexion Internet et la configuration (js/config.js).</p></div></div>`;
+  }
+})();

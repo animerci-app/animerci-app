@@ -1,0 +1,79 @@
+rules_version = '2';
+// AniMerci — règles de sécurité Firestore
+// Principe : chacun ne voit que le strict nécessaire (minimisation RGPD).
+//  - admin        (administratrice) : tout
+//  - intervenant  : lit les activités ; lit les inscriptions et séances de SES activités ;
+//                   peut enregistrer un appel mais PAS le valider
+//  - benevole     : lit uniquement les activités (planning)
+// Les comptes et leurs rôles (collection "users") sont créés dans la console Firebase.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function connecte() { return request.auth != null; }
+    function profil() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function aProfil() { return connecte() && exists(/databases/$(database)/documents/users/$(request.auth.uid)); }
+    function role() { return aProfil() ? profil().role : ''; }
+    function estAdmin() { return role() == 'admin'; }
+    function activitesAutorisees() { return aProfil() && 'activites' in profil() ? profil().activites : []; }
+    function sienne(activiteId) { return role() == 'intervenant' && activiteId in activitesAutorisees(); }
+
+    // Profil : chacun lit le sien ; seul l'admin lit/écrit les autres.
+    match /users/{uid} {
+      allow read: if connecte() && (request.auth.uid == uid || estAdmin());
+      allow write: if estAdmin() && request.auth.uid != uid;
+    }
+
+    // Personnes (seniors) : réservé à l'admin
+    match /seniors/{id} { allow read, write: if estAdmin(); }
+
+    // Activités : lecture pour tout rôle connu, écriture admin
+    match /activites/{id} {
+      allow read: if role() in ['admin', 'intervenant', 'benevole'];
+      allow write: if estAdmin();
+    }
+
+    // Inscriptions : lecture intervenant limitée à ses activités (la requête doit filtrer sur activiteId)
+    match /inscriptions/{id} {
+      allow read: if estAdmin() || sienne(resource.data.activiteId);
+      allow write: if estAdmin();
+    }
+
+    // Séances / appels : l'intervenant enregistre mais ne valide pas
+    match /seances/{id} {
+      allow read: if estAdmin() || sienne(resource.data.activiteId);
+      allow create: if estAdmin()
+        || (sienne(request.resource.data.activiteId) && request.resource.data.valide != true);
+      allow update: if estAdmin()
+        || (sienne(resource.data.activiteId)
+            && resource.data.valide != true
+            && request.resource.data.valide != true
+            && request.resource.data.activiteId == resource.data.activiteId);
+      allow delete: if estAdmin();
+    }
+
+    // Fiches de sortie (données de santé minimales) et tâches : admin uniquement
+    match /fiches/{id} { allow read, write: if estAdmin(); }
+    match /taches/{id} { allow read, write: if estAdmin(); }
+
+    // Corbeille (30 jours) : admin uniquement
+    match /corbeille/{id} { allow read, write: if estAdmin(); }
+
+    // Annuaire (intervenants, partenaires, bénévoles, collègues : coordonnées) : administratrice uniquement
+    match /contacts/{id} { allow read, write: if estAdmin(); }
+
+    // Paramètres de l'outil (noms, listes, durées, modules) : lisibles par tout rôle connu, modifiables par l'admin seule
+    match /parametres/{id} {
+      allow read: if role() in ['admin', 'intervenant', 'benevole'];
+      allow write: if estAdmin();
+    }
+
+    // Journal des modifications : tout rôle connu peut y ajouter une ligne, seule l'admin le lit et le nettoie
+    match /journal/{id} {
+      allow create: if role() in ['admin', 'intervenant', 'benevole'];
+      allow read, delete: if estAdmin();
+      allow update: if false;
+    }
+
+    match /{document=**} { allow read, write: if false; }
+  }
+}

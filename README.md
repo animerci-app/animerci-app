@@ -1,16 +1,80 @@
-## Hi there 👋
+# AniMerci — outil de gestion d'animation pour un service socioculturel
+**Version 1.13.0 — 19 novembre 2026** (numéro affiché en bas du menu de l'application)
 
-<!--
-**animerci-app/animerci-app** is a ✨ _special_ ✨ repository because its `README.md` (this file) appears on your GitHub profile.
+Application web gratuite (aucune installation) : personnes, activités, inscriptions avec rotation équitable,
+appels de présence, fiches de sortie allégées, planning, affiche de la semaine, tâches, bilans et exports CSV.
 
-Here are some ideas to get you started:
+## Deux modes
+- **Démonstration** (par défaut) : `js/config.js` est vide → données fictives, enregistrées uniquement dans le navigateur.
+  Pour essayer : ouvrir le site, cliquer sur un profil (administratrice, intervenante, bénévole).
+- **Réel** : après avoir collé la configuration Firebase dans `js/config.js` → connexion par e-mail + mot de passe,
+  données partagées entre appareils, droits par rôle (voir `firestore.rules`).
 
-- 🔭 I’m currently working on ...
-- 🌱 I’m currently learning ...
-- 👯 I’m looking to collaborate on ...
-- 🤔 I’m looking for help with ...
-- 💬 Ask me about ...
-- 📫 How to reach me: ...
-- 😄 Pronouns: ...
-- ⚡ Fun fact: ...
--->
+## Contenu
+- `index.html`, `css/`, `js/` : l'application (aucune compilation, fichiers servis tels quels)
+- `firestore.rules` : règles de sécurité (à publier dans Firebase)
+- `GUIDE-MISE-EN-LIGNE.md` : pas à pas pour créer les comptes et mettre en ligne
+- `tests/` : tests automatiques (logique + parcours en mode démonstration)
+
+## Rôles
+| Rôle | Voit | Peut faire |
+|---|---|---|
+| admin (administratrice) | tout, dont Équipe et Sécurité (sauvegarde, corbeille, journal) | tout, valide les appels, gère l'Équipe (accès et rôles) |
+| intervenant | ses activités : inscrits et séances | faire l'appel (enregistrer, pas valider) |
+| benevole | planning | consulter |
+
+## Données et RGPD (à faire confirmer par le DPO)
+- Le dépôt GitHub ne contient **aucune donnée personnelle** : uniquement le code.
+- Les données vivent dans Firestore (région Paris, europe-west9). Fournisseur : Google (hors UE pour le siège) → point à confirmer avec le DPO.
+- Fiche de sortie : aucun diagnostic, seulement des informations pratiques (mobilité, alimentation, traitement oui/non, autorisations) ; bouton « Effacer après la sortie ».
+- Seuls les appels **validés** comptent dans les bilans.
+
+## L'administratrice garde la main sur toutes les données
+- Elle (rôle administratrice) peut **voir, modifier, compléter, supprimer et restaurer** tout ce qui est saisi par les intervenants, collègues, bénévoles ou partenaires. Les règles de sécurité réservent aux autres rôles un droit limité ; aucun rôle ne peut lui retirer l'accès.
+- **Saisir à la place d'un·e intervenant·e** : sur une activité, onglet Appels → « Faire l'appel » (date au choix, y compris passée) ou ouvrir un appel existant et le corriger.
+- **Qui a fait quoi** : chaque appel affiche « Saisi par … » et « corrigé par … » ; le journal (Sécurité) garde l'historique.
+- **Reprendre la main sur un appel validé** : bouton « Rouvrir l'appel ». Tant qu'un appel est validé, l'intervenant·e ne peut plus le modifier ; seul son appel validé entre dans les bilans.
+- Principe appliqué aux futures saisies (phase 2, portail seniors, partenaires) : toute donnée saisie par un tiers reste modifiable par l'administratrice.
+
+## Sécurité des données
+- **Sauvegarde** : Excel, PDF (impression), Word, fichier de restauration .json ; rappel après 30 jours.
+- **Corbeille** : personnes, activités, tâches et inscriptions supprimées restent 30 jours, restaurables (les fiches de sortie, santé, ne passent jamais par la corbeille).
+- **Journal** : qui a créé, modifié, supprimé ou restauré quoi, conservé 365 jours. Il est écrit par l'application : il aide à retrouver une erreur mais n'a pas valeur de preuve infalsifiable.
+- **Secours papier** : feuilles de présence imprimables par activité ou pour les 14 prochains jours.
+
+- **Annuaire** (admin) : collection `contacts` {nom, precision, categorie, tel, email, note}. Depuis la 1.4.1 le lien activité/tâche → contact se fait par identifiant (`interv`+`intervId`, `partenaire`+`partenaireId`, `benevole`+`benevoleId`, `responsable`+`responsableId` ; le champ texte garde le libellé « Nom · précision »). Composant `champListe/lireChamp` (js/annuaire.js) à réutiliser dans tout formulaire : liste déroulante + « Ajouter quelqu'un », ajout automatique sans doublon. Rubriques actuelles : activité (intervenant·e, partenaire, bénévole référent·e) et tâche (responsable) ; pour en ajouter une, déclarer une entrée dans `RUBRIQUES` et dans `annuaire.rubriques` (parametres.js). Accès réservé à l'administratrice (coordonnées).
+- **Paramètres** (admin) : noms de l'outil et du service, listes (catégories, budgets, mobilité), nom de la résidence et commune proposée à l'inscription, montant d'adhésion, durées (corbeille, journal, rappel), longueur minimale du mot de passe (12 par défaut), modules Tâches/Bilans activables. Stocké dans `parametres/general`, valeurs d'origine dans `js/parametres.js`.
+- **Mot de passe** : l'outil exige 12 caractères minimum à la connexion (bandeau + écran « Changer mon mot de passe »). Firebase n'impose que 6 caractères : seule l'application applique le minimum de 12. Double authentification : facultative, gratuite uniquement (application d'authentification), voir le guide.
+
+## Limites connues
+- Le mode réel a été testé avec un **faux Firebase** reproduisant les règles ; il n'a pas été testé sur un vrai projet Firebase : faire les contrôles de l'étape 5 du guide.
+- Pas de sauvegarde automatique sur l'offre gratuite (elle exige l'offre payante Blaze) : utiliser l'écran Sauvegarde chaque mois (Excel, PDF, Word, fichier de restauration .json).
+- Offre gratuite Firebase (Spark) : 1 Gio, 50 000 lectures/jour, 20 000 écritures/jour ; au-delà le service s'arrête (pas de facturation).
+- **Lectures** : `js/donnees.js` décrit ce que chaque écran charge (chargement à la demande) ; `js/app.js` crée chaque abonnement une fois. Mesures de la simulation (`tests/echelle.py`, 300 personnes, 1 500 inscriptions, 1 000 séances) : accueil environ 620 lectures, Personnes 300, liste d'activités 50, une activité 450, Bilans (année) 1 000. Cache local activé par défaut (`CACHE_LOCAL` dans `js/config.js`), effacé à la déconnexion. Compteur estimatif dans Sécurité. Aucune valeur réelle mesurée sur un vrai projet Firebase pour l'instant.
+- Règle de conception : tout nouvel écran doit déclarer ses besoins dans `besoins()` (donnees.js) et son test dans `tests/logic.test.mjs`. Ne jamais lire une collection entière « au cas où ».
+- Non construit (phases suivantes) : portail d'inscription public pour les seniors, SMS/e-mails, régie, budgets, portage de repas, matériel.
+
+- **Recherche et import (1.5.0)** : `js/recherche.js` (composant combobox `champRecherche`, filtre `filtrer` de logic.js, dates via `formatsDate`), `js/import-logic.js` + `js/importer.js` (CSV/XLSX sans bibliothèque, détection des colonnes, doublons), `js/fusion.js` (fusion de deux fiches). Contacts : `{nom, prenom, organisme, precision, categorie, …}` ; anciens contacts normalisés par `normContact`. Mode réel : `save` utilise `mergeFields` pour remplacer les champs entiers.
+
+- **Installation (1.6.0)** : `manifest.webmanifest`, `sw.js` (service worker, cache des seuls fichiers du programme ; les données Firebase n'y passent jamais), `icons/`, `js/pwa.js` (bouton Installer, mise à jour). Garder `VERSION` de `sw.js` identique à `js/version.js` (vérifié par `tests/pwa.py`).
+
+## Journal des versions
+| Version | Date | Changements |
+|---|---|---|
+| 1.12.0 | 19/11/2026 | **Résidents** : champ « Appartement » (fiche, repère « Appt n° » dans la liste, import, export) ; import d'une liste classée par mois : les lignes de titre (JANVIER, FÉVRIER…) sont ignorées, les colonnes Année et Âge aussi (l'âge est calculé) ; **sexe** : « non précisé » par défaut, déduit du prénom quand il est évident (Marc, Alice…), sinon à compléter (compté à part dans les Bilans) ; correction d'affichage : sur ordinateur, les champs Nom et Téléphone de la fiche dépassaient de la fenêtre. Fenêtres et messages : plus aucun chevauchement, testé sur 10 formats d'appareils (téléphones en portrait et en paysage, tablettes, ordinateurs) : le message de confirmation s'affiche en haut quand une fenêtre est ouverte, le bandeau de mise à jour se place au-dessus de la barre du bas, le Planning ne déborde plus sur grand écran. **Attente** : un pictogramme qui tourne et un message « un peu de patience » (qui n'apparaît que si cela dure plus de 4 secondes) s'affichent au démarrage, sur les écrans en chargement, et un message apparaît si un enregistrement, une lecture ou un import traîne. |
+| 1.13.0 | 19/11/2026 | **Nouveau nom : AniMerci** (remplace l'ancien nom de travail partout : textes, installation sur l'écran d'accueil, identifiants internes, tests, documents ; nouvelle icône (« A » dans une bulle de dialogue, fond corail-orange, étoiles) ; adresses d'hébergement `animerci-app`, sans suffixe) ; un contrôle automatique vérifie que l'ancien nom n'apparaît plus. |
+| 1.11.0 | 18/11/2026 | **Import des activités** (bouton « Importer une liste » dans Activités, fichier ou liste collée) : nom, type, catégorie, jour et horaire, fréquence, lieu, places ; deux activités de même nom mais de jours différents (« Sophrologie » mercredi et vendredi) sont conservées ; un réimport ne duplique rien. Les intervenant·es se rattachent ensuite depuis la fiche de l'activité (liste de l'Annuaire). |
+| 1.10.0 | 18/11/2026 | **Fréquence des activités** (champ libre avec suggestions : « Toutes les semaines », « 1 fois par mois », « 4 fois par an »…), affichée sur la carte et la fiche de l'activité et dans l'export Excel. **Annuaire : 9 catégories par défaut** (intervenant·e, ponctuel·le, religieux·se, partenaire, association partenaire, partenaire institutionnel, bénévole, conduites et accompagnements, collègue), modifiables dans Paramètres. Les statuts du portage restent « Autre public » par défaut, modifiables fiche par fiche. |
+| 1.9.0 | 18/11/2026 | **Portage de repas à domicile** : case « Reçoit le portage de repas » sur la fiche avec les jours de livraison (lundi à dimanche) et une précision ; la colonne « Fréquence » des listes est lue à l'import (« Lundi au vendredi », « Lundi, mercredi, vendredi »…) ; repère sur la liste, filtre « Portage de repas », colonne dans l'export Excel. **Adresse de la résidence** (Paramètres) : à l'import, une personne qui y habite est classée Résident·e sans adresse. Une personne déjà présente reçoit seulement son portage. Annuaire : « Père … » devient une précision ; les noms d'un seul mot sont signalés. |
+| 1.8.0 | 18/11/2026 | **Import par « coller la liste »** (liste copiée depuis Word ou Excel, une personne par ligne) pour les personnes et l'annuaire : reconnaît « NOM Prénom – Nom de jeune fille : X », « Prénom à confirmer » (repère sur la fiche, case à décocher), « Prénom Nom (précision) », les titres de groupe d'une liste à puces (repris comme précision), les titres de civilité (Père…) et les équipes entre parenthèses ; un tableau Word collé est lu avec « Date anniversaire » comme date de naissance ; option « cotisation déjà réglée pour toute la liste » ; signalement des noms qui ne diffèrent que d'une lettre ; correction : un nom comme « LE GALL Marie » n'était pas reconnu comme une personne. **Cotisation réservée aux adhérent·es** : ni les résident·es ni les « Autre public » n'ont de cotisation à régler. Aucune migration, règles Firestore inchangées, lectures inchangées ; tests : 26 logique, v1.8.0 (12 contrôles) |
+| 1.7.0 | 16/11/2026 | **Résident·es / Adhérent·es et lieu de vie** : champ « Commune » sur la fiche (adhérent·es d'autres communes), résident·es sans adresse (lieu de vie = la résidence) ; deux réglages dans Paramètres, « Nom de la résidence » et « Commune proposée » (rien n'est écrit dans le code) ; dans les listes d'activité : statut, repère **« Cotisation à régler »** (jamais pour un·e résident·e), compteurs par public, copie de la liste groupée par public ; mêmes repères sur la feuille d'émargement imprimée ; colonnes Lieu de vie et Commune dans l'export et la sauvegarde Excel ; import : colonne Commune reconnue. Aucune migration, règles Firestore inchangées, quota de lectures inchangé ; tests : 23 logique + test v1.7.0 |
+| 1.6.0 | 16/11/2026 | **Premier nom de travail** (aucun nom de personne ni de lieu dans le code publié ; contrôle automatique `tests/confidentialite.mjs`) ; **application installable** (PWA) sur Android, iPhone/iPad, PC et Mac, icône dédiée, démarrage possible hors connexion, message « Nouvelle version disponible » ; textes de l'affiche de la semaine paramétrables. Aucune lecture Firestore de plus, règles Firebase inchangées. |
+| 1.5.0 | 16/11/2026 | **Recherche au fil de la frappe** : tous les menus déroulants deviennent un champ « tapez pour chercher » (nom, prénom, nom de jeune fille, date de naissance au format jj/mm/aaaa — ou seulement l'année, ou mm/aaaa —, métier/activité/organisme), flèches + Entrée au clavier, « récemment choisis » ; toutes les listes classées par patronyme ; contacts séparés en Nom / Prénom (les anciens sont séparés automatiquement et marqués « à vérifier ») ; **import Excel/CSV** (personnes et annuaire, modèle téléchargeable, colonnes reconnues automatiquement, doublons signalés) ; **recherche globale** ; **inscription de plusieurs personnes** à la fois ; **dupliquer une activité** ; **fusion de deux fiches doublons** ; correction : une personne retirée d'une séance n'était pas retirée en mode réel (écriture par champs entiers). Aucune lecture Firestore supplémentaire ; règles Firebase inchangées. |
+| 1.4.1 | 14/11/2026 | **Homonymes** : champ « Précision » sur les contacts (obligatoire si une autre personne porte le même nom), question « même personne ou une autre ? » à l'ajout depuis un formulaire, lien par identifiant (renommer l'une ne touche plus l'autre) ; personnes : date de naissance exigée et affichée en cas d'homonyme, **nom de jeune fille** (facultatif, recherché, comparé au nom d'usage pour repérer une même dame sous deux noms) ; exports et sauvegardes complétés. |
+| 1.4.0 | 14/11/2026 | Annuaire (intervenants, partenaires, bénévoles, collègues), listes déroulantes avec ajout automatique, sauvegardes incluant l'annuaire. **`firestore.rules` : nouvelle section `contacts`.** |
+| 1.3.0 | 14/11/2026 | Économie de lectures Firestore : chargement à la demande, comptages côté serveur, périodes limitées, cache local, compteur de lectures, sauvegarde qui relit la base, purge quotidienne. Règles Firestore identiques à la 1.2.0. |
+| 1.2.0 | 13/11/2026 | Écran Paramètres (moins de valeurs codées en dur), mot de passe 12 caractères minimum, double authentification facultative et gratuite. **Republier `firestore.rules`** (section `parametres`). |
+| 1.1.0 | 13/11/2026 | L'administratrice garde la main sur les saisies des tiers : trace « saisi par / corrigé par » sur les appels, bouton « Rouvrir l'appel », saisie d'un appel oublié à la place d'une intervenante, tests correspondants. Règles Firestore inchangées (rien à republier). |
+| 1.0.0 | 13/11/2026 | Première version de mise en ligne (phase 1) : personnes, activités, inscriptions et rotation, appels, fiches de sortie, planning, tâches, bilans, Équipe, Sécurité (sauvegarde Excel/PDF/Word/.json, restauration, corbeille 30 jours, journal, feuilles de présence). Vérification approfondie : tests logique (14), parcours démonstration, parcours mode réel simulé avec règles, analyse statique, protection anti-formule dans les CSV, correction des échéances de fin de mois, journal limité aux 150 dernières lignes (économie du quota), défilement du menu sur téléphone. |
+
+Règle de numérotation : 1.0.0 → 1.0.1 correction ; 1.1.0 nouveauté ; 2.0.0 changement majeur (ex. phase 2).
