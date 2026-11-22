@@ -47,7 +47,17 @@ function actForm(id, modele) {
   <div class="two">${champListe('g8', 'activiteIntervenant', a.interv, a.intervId)}
   <div class="field"><label for="g9">Budget</label><select id="g9">${P('listes.budgets').map(b => `<option ${a.budget === b ? 'selected' : ''}>${b}</option>`).join('')}</select></div></div>
   <div class="two">${champListe('g10', 'activitePartenaire', a.partenaire, a.partenaireId)}${champListe('g11', 'activiteBenevole', a.benevole, a.benevoleId)}</div>
+  <div class="field"><label for="g13">Autres bénévoles <small class="sub">(noms séparés par des virgules ; le·la bénévole référent·e se choisit ci-dessus)</small></label><input id="g13" value="${esc(a.autresBenevoles || '')}" autocomplete="off"></div>
+  <div class="field"><label for="g14">Description</label><textarea id="g14" rows="3">${esc(a.description || '')}</textarea></div>
+  <div class="two"><div class="field"><label for="g15">Public concerné</label><input id="g15" value="${esc(a.publicCible || '')}" placeholder="Ex. résident·es et adhérent·es" autocomplete="off"></div>
+  <div class="field"><label for="g16">Coût pour les participant·es</label><input id="g16" value="${esc(a.cout || '')}" placeholder="Gratuit, 2 € par personne…" autocomplete="off"></div></div>
+  <div class="two"><div class="field"><label for="g17">Matériel nécessaire</label><input id="g17" value="${esc(a.materiel || '')}" autocomplete="off"></div>
+  <div class="field"><label for="g18">Modalités d'inscription</label><input id="g18" value="${esc(a.modalites || '')}" placeholder="Ex. à l'accueil, avant jeudi" autocomplete="off"></div></div>
+  <div id="blocEv" style="display:none"><div class="field"><label for="g19">Accompagnants et personnel présent <small class="sub">(jour J)</small></label><input id="g19" value="${esc(a.accompagnants || '')}" autocomplete="off"></div>
+  <div class="field"><label for="g20">Déroulé du jour J</label><textarea id="g20" rows="4" placeholder="Ex. 9 h installation · 10 h accueil · 12 h repas…">${esc(a.deroule || '')}</textarea></div></div>
   <div class="quick" style="margin-top:14px"><button class="btn" id="saveAct">Enregistrer</button><button class="btn ghost" data-action="close">Annuler</button>${id ? '<button class="btn ghost" id="delAct" style="margin-left:auto">Supprimer</button>' : ''}</div>`);
+  const majType = () => { $('#blocEv').style.display = ['evenement', 'sortie'].includes($('#g3').value) ? 'block' : 'none'; };
+  $('#g3').onchange = majType; majType();
   $('#saveAct').onclick = async () => {
     const nom = $('#g1').value.trim(); if (!nom) return toast('Donnez un nom à l\'activité.');
     const cap = Math.max(1, Number($('#g7').value) || 1);
@@ -55,7 +65,8 @@ function actForm(id, modele) {
     const rp = await lireChamp('g10', 'activitePartenaire'); if (!rp) return;
     const rb = await lireChamp('g11', 'activiteBenevole'); if (!rb) return;
     const li = { ...ri, ...rp, ...rb };
-    const nid = await sauver('activites', { ...(id ? { id } : {}), nom, cat: $('#g2').value.trim() || 'Autre', type: $('#g3').value, date: $('#g4').value, jour: $('#g5').value.trim(), frequence: $('#g12').value.trim(), lieu: $('#g6').value.trim(), cap, ...li, budget: $('#g9').value }, 'Activité enregistrée');
+    const nid = await sauver('activites', { ...(id ? { id } : {}), nom, cat: $('#g2').value.trim() || 'Autre', type: $('#g3').value, date: $('#g4').value, jour: $('#g5').value.trim(), frequence: $('#g12').value.trim(), lieu: $('#g6').value.trim(), cap, ...li, budget: $('#g9').value,
+      autresBenevoles: $('#g13').value.trim(), description: $('#g14').value.trim(), publicCible: $('#g15').value.trim(), cout: $('#g16').value.trim(), materiel: $('#g17').value.trim(), modalites: $('#g18').value.trim(), accompagnants: $('#g19').value.trim(), deroule: $('#g20').value.trim() }, 'Activité enregistrée');
     closeModal(); if (!id) go('activite', { actId: nid });
   };
   if (id) $('#delAct').onclick = () => confirmer('Supprimer cette activité ?', 'Ses inscriptions, séances et fiches de sortie seront supprimées aussi.', 'Supprimer', async () => {
@@ -68,6 +79,12 @@ function actForm(id, modele) {
 }
 
 /* ============ DÉTAIL ============ */
+// Détails facultatifs de la fiche d'activité (description, public, coût, matériel, modalités, bénévoles, jour J)
+function blocDetails(a) {
+  const ev = ['evenement', 'sortie'].includes(a.type);
+  const L1 = [['Description', a.description], ['Public concerné', a.publicCible], ['Coût', a.cout], ['Matériel nécessaire', a.materiel], ['Modalités d\'inscription', a.modalites], ['Autres bénévoles', a.autresBenevoles], ...(ev ? [['Accompagnants et personnel présent', a.accompagnants], ['Déroulé du jour J', a.deroule]] : [])].filter(([, v]) => v);
+  return L1.length ? `<div class="card detail" style="margin-bottom:16px"><dl style="margin:0">${L1.map(([k, v]) => `<dt>${esc(k)}</dt><dd style="white-space:pre-line">${esc(v)}</dd>`).join('')}</dl></div>` : '';
+}
 export function activite() {
   const a = actDe(S.actId);
   if (!a) return `<button class="back" data-action="nav" data-v="activites">← Activités</button><div class="card"><div class="empty"><b>Activité introuvable</b></div></div>`;
@@ -80,7 +97,8 @@ export function activite() {
   return `<button class="back" data-action="nav" data-v="activites">← Toutes les activités</button>
   <div class="top"><div><h1>${esc(a.nom)}</h1><p>${esc(a.jour || '')}${a.date ? ' · ' + esc(dateLongue(a.date)) : ''}${a.lieu ? ' · ' + esc(a.lieu) : ''}${a.frequence ? ' · ' + esc(a.frequence) : ''}</p>
     ${a.interv || a.partenaire || a.benevole ? `<p class="sub">${[a.interv && 'Intervenant·e : ' + a.interv, a.partenaire && 'Partenaire : ' + a.partenaire, a.benevole && 'Bénévole : ' + a.benevole].filter(Boolean).map(esc).join(' · ')}</p>` : ''}</div>
-    ${admin ? '<button class="btn sec" data-action="act-form" data-id="' + a.id + '">Modifier</button><button class="btn ghost" data-action="act-dupliquer" data-id="' + a.id + '">Dupliquer</button>' : ''}</div>
+    ${admin ? '<button class="btn sec" data-action="act-form" data-id="' + a.id + '">Modifier</button><button class="btn ghost" data-action="act-dupliquer" data-id="' + a.id + '">Dupliquer</button>' + (['evenement', 'sortie'].includes(a.type) ? '<button class="btn blue" data-action="jour-j">Fiche du jour J</button>' : '') : ''}</div>
+  ${blocDetails(a)}
   <div class="tabs">${tabs.map(([k, l]) => `<button data-action="tab" data-v="${k}" aria-pressed="${S.tab === k}">${l}</button>`).join('')}</div>${corps}`;
 }
 
@@ -101,10 +119,10 @@ function tabInscriptions(a) {
   const classes = L.classerCandidats(candidats(a), S.rules);
   const ligne = (c, rang) => {
     const retenu = RETENUS.includes(c.statutIns);
-    return `<button class="cand" data-action="toggle-ins" data-id="${c.id}" aria-pressed="${retenu}">
+    return `<div style="display:flex;align-items:flex-start;gap:4px"><button class="cand" style="flex:1;min-width:0" data-action="toggle-ins" data-id="${c.id}" aria-pressed="${retenu}">
       <span class="rank">${rang}</span><span class="av">${esc(initiales(c.nom))}</span>
       <span style="flex:1"><b>${esc(c.nom)}</b><span class="why">${repereStatut(c.statut)}${c.cotis ? '<span class="pill p-warn">Cotisation à régler</span>' : ''}${L.raisons(c).filter(x => x !== 'Résident·e').map(x => `<span class="pill ${x.startsWith('Première') ? 'p-ok' : x.includes('absence') || x.includes('désist') ? 'p-warn' : 'p-rose'}">${esc(x)}</span>`).join('')}</span></span>
-      <span class="pill ${retenu ? 'p-ok' : 'p-rose'}">${retenu ? 'Retenu·e' : 'En attente'}</span></button>`;
+      <span class="pill ${retenu ? 'p-ok' : 'p-rose'}">${retenu ? 'Retenu·e' : 'En attente'}</span></button><button class="iconbtn" style="margin-top:6px" data-action="del-ins" data-id="${c.id}" aria-label="Retirer ${esc(c.nom)}">✕</button></div>`;
   };
   const sn = i => seniorDe(i.seniorId) || null;
   const simple = tous.map(i => ({ i, sn: sn(i) })).sort((x, y) => L.rangStatut(x.sn && x.sn.statut) - L.rangStatut(y.sn && y.sn.statut));
@@ -116,7 +134,8 @@ function tabInscriptions(a) {
     ${r ? `<p class="sub" style="margin:8px 0 0">${nbRes} résident·e${nbRes > 1 ? 's' : ''} · ${nbAdh} adhérent·e${nbAdh > 1 ? 's' : ''}${r - nbRes - nbAdh ? ` · ${r - nbRes - nbAdh} autre${r - nbRes - nbAdh > 1 ? 's' : ''}` : ''}${nbCot ? ` · <b>${nbCot} cotisation${nbCot > 1 ? 's' : ''} à régler</b>` : ''}</p>` : ''}
     <div class="quick" style="margin-top:12px"><button class="btn" data-action="ins-form">+ Inscrire quelqu'un</button>
     ${rotation ? '<button class="btn blue" data-action="proposer">Proposer la liste</button>' : ''}
-    ${r ? '<button class="btn sec" data-action="copier-retenus">Copier la liste des retenus</button>' : ''}${r ? emargementBouton() : ''}</div>
+    ${r ? '<button class="btn sec" data-action="copier-retenus">Copier la liste des retenus</button><button class="btn sec" data-action="confirmations">Confirmations d\'inscription</button>' : ''}${r ? emargementBouton() : ''}</div>
+    ${placeLibre(a, tous, r)}
     ${rotation ? `<h2 style="margin-top:20px">Rotation : ${tous.length} demandes pour ${a.cap} places</h2>
     <p class="sub" style="margin:0">Choisissez vos règles puis demandez une proposition. Touchez ensuite un nom pour le retenir ou le remettre en attente : la décision reste la vôtre.</p>
     <div class="rules"><label class="chk"><input type="checkbox" data-change="regle" data-r="moins" ${S.rules.moins ? 'checked' : ''}> Ceux qui ont le moins participé</label>
@@ -128,8 +147,38 @@ function tabInscriptions(a) {
       <span class="pill ${RETENUS.includes(i.statut) ? 'p-ok' : 'p-rose'}">${RETENUS.includes(i.statut) ? 'Inscrit·e' : 'En attente'}</span>
       <button class="iconbtn" data-action="del-ins" data-id="${i.id}" aria-label="Retirer ${esc(i.seniorNom)}">✕</button></div>`).join('')}</div>`
     : '<div class="empty"><b>Personne n\'est encore inscrit·e</b>Ajoutez la première inscription avec le bouton ci-dessus.</div>'}
-    ${att && !rotation ? `<p class="note">${att} personne${att > 1 ? 's' : ''} en attente : une place libérée se redonne à la première de la liste.</p>` : ''}
+    ${att && !rotation && r >= a.cap ? `<p class="note">${att} personne${att > 1 ? 's' : ''} en attente : quand une place se libère, l'outil vous propose de la redonner à la première de la liste.</p>` : ''}
   </div>`;
+}
+const quand = a => [a.date ? dateLongue(a.date) : '', a.jour ? a.jour.split('·').pop().trim() : ''].filter(Boolean).join(' · ');
+const premiereAttente = tous => tous.filter(i => i.statut === 'attente').sort((x, y) => (x.dateDemande || '').localeCompare(y.dateDemande || ''))[0];
+// Une place est libre et des personnes attendent : proposition à la première (la plus ancienne demande)
+function placeLibre(a, tous, r) {
+  // en mode rotation (plus de demandes que de places), l'alerte n'apparaît qu'une fois la liste proposée (au moins une personne retenue)
+  const p = tous.length > a.cap && !r ? null : premiereAttente(tous);
+  if (!p || r >= a.cap) return '';
+  const sn = seniorDe(p.seniorId);
+  return `<div class="alerte-place" role="status" style="margin-top:14px;padding:12px 14px;border-radius:12px;background:var(--warn-bg);border:1px solid #e0b060"><b>${a.cap - r === 1 ? 'Une place est libre' : (a.cap - r) + ' places sont libres'}.</b>
+    <div>Première personne en attente : <b>${esc(p.seniorNom)}</b>${sn && sn.tel ? ' · ' + esc(sn.tel) : ''} (demande du ${esc(L.fmtDate(p.dateDemande))}).</div>
+    <div class="quick" style="margin-top:8px"><button class="btn" data-action="donner-place" data-id="${p.id}">Lui donner la place</button><button class="btn sec" data-action="copier-proposition" data-id="${p.id}">Copier le message de proposition</button></div></div>`;
+}
+// Confirmations d'inscription : un message prêt à copier pour chaque personne retenue, et la date où elle a été confirmée
+function confirmationsModal() {
+  const a = actDe(S.actId), faites = new Map();
+  const dessiner = () => {
+    const rows = retenusDe(a.id).sort((x, y) => x.seniorNom.localeCompare(y.seniorNom, 'fr'));
+    modal(`<h2>Confirmations d'inscription</h2><p class="sub">${esc(a.nom)}. Copiez le message pour l'envoyer ou le lire par téléphone, puis marquez la personne comme prévenue.</p>
+    ${rows.map(i => { const sn = seniorDe(i.seniorId), le = faites.get(i.id) || i.confirmeLe; return `<div class="row" style="flex-wrap:wrap;gap:8px"><div class="grow" style="min-width:150px"><b>${esc(i.seniorNom)}</b><small>${sn && sn.tel ? esc(sn.tel) : 'Pas de téléphone'}</small></div>
+      ${le ? `<span class="pill p-ok">Prévenue le ${esc(L.fmtDate(le))}</span>` : '<span class="pill p-warn">Pas encore prévenue</span>'}
+      <button class="btn sec sm" data-conf="copier" data-id="${i.id}">Copier le message</button>${le ? '' : `<button class="btn sm" data-conf="fait" data-id="${i.id}">Marquer prévenue</button>`}</div>`; }).join('') || '<div class="empty"><b>Personne n\'est retenu·e</b></div>'}
+    <div class="quick" style="margin-top:14px"><button class="btn ghost" data-action="close">Fermer</button></div>`);
+    document.querySelectorAll('[data-conf]').forEach(b => { b.onclick = async () => {
+      const i = rows.find(x => x.id === b.dataset.id); if (!i) return; const sn = seniorDe(i.seniorId);
+      if (b.dataset.conf === 'copier') return copier(L.texteConfirmation({ prenom: sn && sn.prenom, activite: a.nom, quand: quand(a), lieu: a.lieu, cout: a.cout, modalites: a.modalites, signature: P('nomService') }), 'Message copié');
+      await sauver('inscriptions', { ...i, confirmeLe: aujourdhui() }, 'Confirmation notée'); faites.set(i.id, aujourdhui()); dessiner();
+    }; });
+  };
+  dessiner();
 }
 async function insForm() {
   const a = actDe(S.actId), deja = new Set(inscriptionsDe(a.id).map(i => i.seniorId)), choisis = new Map();
@@ -181,7 +230,7 @@ function tabSeances(a) {
   const rows = S.cache.seances.filter(s => s.activiteId === a.id).sort((x, y) => y.date.localeCompare(x.date));
   return `<div class="card"><div class="quick"><button class="btn" data-action="nouvel-appel">Faire l'appel</button>${emargementBouton()}</div>
   ${rows.length ? rows.map(s => { const v = Object.values(s.presences || {}); return `<button class="row" style="width:100%;background:none;border:0;border-top:1px solid var(--ligne);text-align:left" data-action="ouvrir-appel" data-id="${s.id}">
-    <div class="grow"><b>${esc(dateLongue(s.date))}</b><small>${infoSaisie(s) ? infoSaisie(s) + ' — ' : ''}${v.filter(x => x === 'p').length} présent·es · ${v.filter(x => x === 'a').length} absent·es · ${v.filter(x => x === 'j').length} excusé·es · ${v.filter(x => x === 'd').length} désisté·es</small></div>
+    <div class="grow"><b>${esc(dateLongue(s.date))}</b><small>${s.remplacant ? 'Remplacé·e par ' + esc(s.remplacant) + ' — ' : ''}${infoSaisie(s) ? infoSaisie(s) + ' — ' : ''}${v.filter(x => x === 'p').length} présent·es · ${v.filter(x => x === 'a').length} absent·es · ${v.filter(x => x === 'j').length} excusé·es · ${v.filter(x => x === 'd').length} désisté·es</small></div>
     <span class="pill ${s.valide ? 'p-ok' : 'p-warn'}">${s.valide ? 'Validé' : 'À valider'}</span></button>`; }).join('') : '<div class="empty"><b>Aucun appel</b>Faites le premier appel avec le bouton ci-dessus.</div>'}</div>`;
 }
 const frH = iso => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }); };
@@ -195,6 +244,7 @@ function appel(a) {
   const sc = ap.seanceId ? S.cache.seances.find(x => x.id === ap.seanceId) : null, info = infoSaisie(sc);
   return `<button class="back" data-action="fin-appel">← ${esc(a.nom)}</button>${info ? `<p class="sub" style="margin:0 0 8px">${info}</p>` : ''}
   <div class="top"><div><h1>Faire l'appel</h1><p>${esc(a.nom)}</p></div><div class="field" style="margin:0"><label for="ap-date">Date de la séance</label><input id="ap-date" type="date" value="${esc(ap.date)}" data-change="appel-date"></div></div>
+  <div class="field" style="max-width:520px"><label for="ap-remp">Intervenant·e remplaçant·e <small class="sub">(facultatif : à remplir si l'intervenant·e habituel·le est absent·e)</small></label><input id="ap-remp" value="${esc(ap.remplacant || '')}" autocomplete="off"></div>
   <div class="card">${roster.length ? roster.map(i => `<div class="row"><span class="av" style="width:38px;height:38px;border-radius:50%;background:var(--rose);color:var(--prune);display:grid;place-items:center;font-weight:800;flex:none">${esc(initiales(i.seniorNom))}</span>
     <div class="grow"><b>${esc(i.seniorNom)}</b></div>
     <div class="seg">${seg(i.seniorId, 'p', 'Présent·e', 'p')}${seg(i.seniorId, 'a', 'Absent·e', 'a')}${seg(i.seniorId, 'j', 'Excusé·e', 'j')}${seg(i.seniorId, 'd', 'Désisté·e', 'd')}</div></div>`).join('')
@@ -208,8 +258,9 @@ function appel(a) {
 }
 async function saveAppel(el) {
   const a = actDe(S.actId), ap = S.appel, valide = el.dataset.valide === '1' || (ap.valide && peutAdmin());
+  const remp = ($('#ap-remp') ? $('#ap-remp').value : ap.remplacant || '').trim(); ap.remplacant = remp;
   const maintenant = new Date().toISOString(), trace = ap.seanceId ? { modifiePar: S.user.nom, modifieLe: maintenant } : { saisiPar: S.user.nom, saisiLe: maintenant };
-  const id = await sauver('seances', { ...(ap.seanceId ? { id: ap.seanceId } : {}), activiteId: a.id, date: ap.date, presences: ap.presences, valide: !!valide, ...trace }, valide ? 'Appel validé' : 'Appel enregistré');
+  const id = await sauver('seances', { ...(ap.seanceId ? { id: ap.seanceId } : {}), activiteId: a.id, date: ap.date, presences: ap.presences, remplacant: remp, valide: !!valide, ...trace }, valide ? 'Appel validé' : 'Appel enregistré');
   ap.seanceId = id; ap.valide = !!valide; render();
 }
 
@@ -258,8 +309,25 @@ function listeUrgence() {
   copier(t, 'Liste d\'urgence copiée');
 }
 
+// Fiche du jour J (événement ou sortie) : tout ce qu'il faut sur une page à imprimer, avec la liste des participant·es à cocher
+function jourJ() {
+  const a = actDe(S.actId), part = retenusDe(a.id).sort((x, y) => x.seniorNom.localeCompare(y.seniorNom, 'fr'));
+  const eq = [a.interv && 'Intervenant·e : ' + a.interv, a.partenaire && 'Partenaire : ' + a.partenaire, a.benevole && 'Bénévole référent·e : ' + a.benevole, a.autresBenevoles && 'Autres bénévoles : ' + a.autresBenevoles, a.accompagnants && 'Accompagnants : ' + a.accompagnants].filter(Boolean);
+  const bloc = (t, v) => v ? `<h4>${t}</h4><p style="margin:0;white-space:pre-line">${esc(v)}</p>` : '';
+  modal(`<div class="feuille"><h3>${esc(a.nom)}</h3><div class="sub">${esc([quand(a), a.lieu].filter(Boolean).join(' · '))}</div>
+    ${eq.length ? `<h4>Qui est là</h4><ul>${eq.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}${bloc('Matériel à prévoir', a.materiel)}${bloc('Déroulé', a.deroule)}${bloc('Coût', a.cout)}
+    <h4>Participant·es (${part.length} / ${a.cap})</h4>${part.length ? `<ul class="cases">${part.map(i => `<li>${esc(i.seniorNom)}</li>`).join('')}</ul>` : '<p class="sub">Personne n\'est encore inscrit·e.</p>'}</div>
+  <div class="quick noprint" style="margin-top:14px"><button class="btn" id="jj-imp">Imprimer</button><button class="btn ghost" data-action="close">Fermer</button></div>`);
+  $('#jj-imp').onclick = () => window.print();
+}
+
 /* ============ ACTIONS ============ */
 export const actions = {
+  'jour-j': () => jourJ(),
+  confirmations: () => confirmationsModal(),
+  'donner-place': async el => { const i = S.cache.inscriptions.find(x => x.id === el.dataset.id); if (!i) return; await sauver('inscriptions', { ...i, statut: 'inscrit' }, `Place donnée à ${i.seniorNom}`); },
+  'copier-proposition': el => { const i = S.cache.inscriptions.find(x => x.id === el.dataset.id), a = actDe(S.actId); if (!i) return; const sn = seniorDe(i.seniorId);
+    copier(L.texteProposition({ prenom: sn && sn.prenom, activite: a.nom, quand: quand(a), lieu: a.lieu, signature: P('nomService') }), 'Message copié'); },
   'open-act': el => go('activite', { actId: el.dataset.id }),
   'act-form': el => actForm(el.dataset.id),
   'act-dupliquer': el => actForm(null, actDe(el.dataset.id)),
@@ -269,8 +337,8 @@ export const actions = {
   'toggle-ins': el => toggleIns(el),
   'del-ins': el => confirmer('Retirer cette inscription ?', 'La personne sera retirée de l\'activité.', 'Retirer', async () => { const i = S.cache.inscriptions.find(x => x.id === el.dataset.id); if (i) await mettreCorbeille('inscriptions', i); await store.remove('inscriptions', el.dataset.id); }),
   'copier-retenus': () => { const a = actDe(S.actId); copier(L.texteListeRetenus(a.nom, retenusDe(a.id).map(i => { const sn = seniorDe(i.seniorId); return { nom: i.seniorNom, statut: sn ? sn.statut : 'autre', cotis: L.cotisationARegler(sn) }; })), 'Liste copiée'); },
-  'nouvel-appel': () => { S.appel = { date: aujourdhui(), presences: {}, seanceId: null, valide: false }; render(); },
-  'ouvrir-appel': el => { const s = S.cache.seances.find(x => x.id === el.dataset.id); S.appel = { date: s.date, presences: { ...(s.presences || {}) }, seanceId: s.id, valide: !!s.valide }; render(); },
+  'nouvel-appel': () => { S.appel = { date: aujourdhui(), presences: {}, seanceId: null, valide: false, remplacant: '' }; render(); },
+  'ouvrir-appel': el => { const s = S.cache.seances.find(x => x.id === el.dataset.id); S.appel = { date: s.date, presences: { ...(s.presences || {}) }, seanceId: s.id, valide: !!s.valide, remplacant: s.remplacant || '' }; render(); },
   pres: el => { const ap = S.appel, sid = el.dataset.sid; ap.presences[sid] = ap.presences[sid] === el.dataset.v ? undefined : el.dataset.v; if (!ap.presences[sid]) delete ap.presences[sid]; const y = window.scrollY; render(); window.scrollTo(0, y); },
   'save-appel': el => saveAppel(el),
   'rouvrir-appel': () => confirmer('Rouvrir cet appel ?', 'L\'appel ne sera plus compté dans les bilans tant que vous ne l\'aurez pas validé de nouveau. L\'intervenant·e pourra de nouveau le modifier.', 'Rouvrir', async () => {

@@ -42,7 +42,7 @@ function listen(col, key, filtre, opts) {
 function synchroniser() {
   const u = S.user; if (!u || !u.role) return;
   const mes = (u.activites || []);
-  for (const b of besoins({ role: u.role, view: S.view, actId: S.actId, mois: S.moisPlan || { a: new Date().getFullYear(), m: new Date().getMonth() }, stat: S.stat,
+  for (const b of besoins({ role: u.role, view: S.view, actId: S.actId, mois: S.moisPlan || { a: new Date().getFullYear(), m: new Date().getMonth() }, nbMois: S.nbMois, stat: S.stat,
     rechGlobale: S.rechGlobale, onglet: sec.ongletCourant(), auj: aujourdhui(), horizonSorties: ajouterJours(aujourdhui(), 60), activites: S.cache.activites, mesActivites: mes })) {
     const k = b.col + '|' + b.key; if (actifs.has(k)) continue;
     actifs.add(k); listen(b.col, b.key, b.filtre, b.opts);
@@ -71,7 +71,7 @@ function arreter() { clearTimeout(minuteurPurge); unsubs.forEach(u => u()); unsu
 
 /* ---------- Écrans ---------- */
 function ecranConnexion() {
-  return `<div class="login"><div class="card"><h1>${esc(P('nomOutil'))}</h1><p class="sub">${esc(P('nomService'))}</p>
+  return `<div class="login"><div class="card"><img class="logo-login" src="icons/icon-192.png" alt="" width="72" height="72"><h1>${esc(P('nomOutil'))}</h1><p class="sub">${esc(P('nomService'))}</p>
   ${MODE_REEL ? `<form id="fl"><div class="field"><label for="em">Adresse e-mail</label><input id="em" type="email" autocomplete="username" required></div>
     <div class="field"><label for="pw">Mot de passe</label><input id="pw" type="password" autocomplete="current-password" required></div>
     <div id="lerr" class="err" style="display:none" role="alert"></div>
@@ -89,8 +89,10 @@ function ecranSansRole() {
 function nav() {
   const items = navPour(S.user.role);
   const courante = S.view === 'activite' ? 'activites' : S.view;
-  return `<div class="brand"><i>${esc(P('nomOutil')[0])}</i>${esc(P('nomOutil'))}</div>` + (S.user.role === 'admin' ? '<button class="nav-btn" data-action="rech-globale" style="background:rgba(255,255,255,.14)"><span aria-hidden="true" style="width:20px;text-align:center">⌕</span><span>Chercher</span></button>' : '') + items.map(([k, l, ic]) =>
+  return `<div class="brand"><img src="icons/icon-192.png" alt="" width="34" height="34">${esc(P('nomOutil'))}</div>` + (S.user.role === 'admin' ? '<button class="nav-btn" data-action="rech-globale" style="background:rgba(255,255,255,.14)"><span aria-hidden="true" style="width:20px;text-align:center">⌕</span><span>Chercher</span></button>' : '') + items.map(([k, l, ic]) =>
     `<button class="nav-btn" data-action="nav" data-v="${k}" ${courante === k ? 'aria-current="page"' : ''}><span aria-hidden="true" style="width:20px;text-align:center">${ic}</span><span>${l}</span></button>`).join('') +
+    // Sur téléphone le pied du menu est masqué : ce bouton ouvre la fenêtre « Mon compte » (déconnexion, mot de passe, installation)
+    `<button class="nav-btn nav-compte" data-action="compte"><span aria-hidden="true" style="width:20px;text-align:center">☰</span><span>Compte</span></button>` +
     `<div class="foot"><div>${esc(S.user.nom)}</div><div style="font-size:12px;opacity:.7">Version ${VERSION}</div>${MODE_REEL ? '<button class="nav-btn" style="padding:6px 0;font-size:13px" data-action="mdp-form">Mon mot de passe</button>' : ''}${pwa.boutonInstaller()}<button class="nav-btn" style="padding:6px 0" data-action="logout">Se déconnecter</button>${MODE_REEL ? '' : '<button class="nav-btn" style="padding:6px 0;font-size:13px" data-action="reset-demo">Remettre les données de démonstration</button>'}</div>`;
 }
 const VUES = { home: core.accueil, seniors: core.seniors, taches: core.taches, planning: core.planning, bilans: core.bilans, activites: act.activites, activite: act.activite, annuaire: ann.annuaire, equipe: eq.equipe, sauvegarde: sec.securite, parametres: pa.parametres };
@@ -117,7 +119,14 @@ const actions = {
   ...core.actions, ...act.actions, ...eq.actions, ...ann.actions, ...sec.actions, ...pa.actions, ...imp.actions, ...pwa.actions,
   'rech-globale': () => rechGlobale(),
   close: () => closeModal(),
-  logout: async () => { oublierRecents(); S.mdpLongueur = 0; await store.signOut(); },
+  compte: () => {
+    const roles = { admin: 'Administratrice', intervenant: 'Intervenant·e', benevole: 'Bénévole' };
+    modal(`<h2>Mon compte</h2><p style="margin:0"><b>${esc(S.user.nom)}</b></p><p class="sub" style="margin:0 0 12px">${esc(roles[S.user.role] || '')} · version ${VERSION}</p>
+    <div class="quick" style="flex-direction:column;align-items:stretch">
+    ${MODE_REEL ? '<button class="btn sec" data-action="mdp-form">Changer mon mot de passe</button>' : '<button class="btn sec" data-action="reset-demo">Remettre les données de démonstration</button>'}
+    <button class="btn" data-action="logout">Se déconnecter</button><button class="btn ghost" data-action="close">Fermer</button></div>${pwa.boutonInstaller(true)}`);
+  },
+  logout: async () => { closeModal(); oublierRecents(); S.mdpLongueur = 0; await store.signOut(); },
   'mdp-form': () => {
     const min = P('securite.motDePasseMin');
     modal(`<h2>Changer mon mot de passe</h2><p class="sub">Au moins ${min} caractères. Choisissez un mot de passe que vous n'utilisez nulle part ailleurs (une phrase facile à retenir fonctionne très bien).</p>

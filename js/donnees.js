@@ -8,7 +8,7 @@ export function bornesMois(a, m) {
   return [`${a}-${p(m + 1)}-01`, `${a}-${p(m + 1)}-${p(new Date(a, m + 1, 0).getDate())}`];
 }
 
-// c : { horizonSorties (date limite pour l'alerte « fiches de sortie à compléter »), role, view, actId, mois:{a,m}, stat:{du,au}, onglet, auj, activites:[], mesActivites:[] }
+// c : { nbMois (planning : 1 à 3), horizonSorties (date limite pour l'alerte « fiches de sortie à compléter »), role, view, actId, mois:{a,m}, stat:{du,au}, onglet, auj, activites:[], mesActivites:[] }
 export function besoins(c) {
   const B = [];
   const add = (col, key, filtre, opts) => B.push({ col, key, filtre: filtre || null, opts: opts || null });
@@ -32,7 +32,11 @@ export function besoins(c) {
   }
   if (v === 'seniors' || v === 'bilans' || v === 'activite') add('seniors', 'all');
   if (v === 'activite' && c.actId) { for (const col of ['inscriptions', 'seances', 'fiches']) add(col, c.actId, ['activiteId', '==', c.actId]); }
-  if (v === 'planning' && c.mois) { const [d, f] = bornesMois(c.mois.a, c.mois.m); add('seances', `mois-${d}`, [['date', '>=', d], ['date', '<=', f]]); }
+  if (v === 'planning' && c.mois) {
+    // 1 à 3 mois affichés : une seule lecture couvrant la période
+    const fin = new Date(c.mois.a, c.mois.m + Math.min(3, Math.max(1, c.nbMois || 1)) - 1, 1), [d] = bornesMois(c.mois.a, c.mois.m), [, f] = bornesMois(fin.getFullYear(), fin.getMonth());
+    add('seances', `mois-${d}-${f}`, [['date', '>=', d], ['date', '<=', f]]);
+  }
   if (v === 'bilans') {
     const an = c.auj.slice(0, 4), du = (c.stat && c.stat.du) || `${an}-01-01`, au = (c.stat && c.stat.au) || `${an}-12-31`;
     add('seances', `bilan-${du}-${au}`, [['date', '>=', du], ['date', '<=', au]]);

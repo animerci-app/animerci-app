@@ -203,3 +203,21 @@ body:has(.modal-bg) .toast{bottom:auto;top:12px;z-index:70}
 .patient{opacity:0;animation:apparait .4s ease 4s forwards;margin-top:8px;font-size:14px;color:var(--gris)}
 @keyframes apparait{to{opacity:1}}
 @media (prefers-reduced-motion:reduce){.spin{animation-duration:3s}}
+
+/* v1.14.0 : logo, bouton « Compte » (téléphone), documents imprimables, calendrier sur plusieurs mois */
+.brand img{width:34px;height:34px;border-radius:50%;flex:none}
+.logo-login{display:block;margin:0 auto 10px;border-radius:50%}
+.login{text-align:center}.login .card{text-align:left}.login h1{text-align:center}.login .sub{text-align:center}
+.nav-compte{display:none}
+@media (max-width:860px){.nav-compte{display:flex}}
+.feuille{border:2px solid var(--prune);border-radius:14px;padding:20px;background:#fff;color:var(--encre)}
+.feuille h3{font-size:26px;color:var(--prune);margin-bottom:2px}
+.feuille h4{margin:14px 0 4px;font-size:16px;color:var(--prune);border-bottom:1px solid var(--ligne)}
+.feuille ul{margin:4px 0;padding-left:20px}.feuille li{margin:2px 0}
+.feuille .cases li{list-style:none;margin-left:-20px}.feuille .cases li::before{content:"☐ ";}
+.detail dt{font-weight:800;color:var(--prune);font-size:14px;margin-top:8px}.detail dd{margin:0}
+.cal-mois{margin-top:18px}.cal-mois:first-of-type{margin-top:0}
+.alertes .row{align-items:center}
+@media print{.feuille{border:2px solid #000!important;background:#fff!important;color:#000!important}.feuille h3,.feuille h4{color:#000!important}.noprint-modal{display:none!important}}
+
+@media print{body:has(.modal-bg) .app,body:has(.modal-bg) #banner{display:none!important}}

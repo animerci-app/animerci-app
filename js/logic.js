@@ -332,3 +332,47 @@ export function memeAdresse(adresse, residence) {
 
 /** Fréquences proposées pour une activité (la saisie reste libre : « 1 semaine sur 2 », « 4 fois par an »…). */
 export const FREQUENCES_ACTIVITE = ['Toutes les semaines', 'Toutes les 2 semaines', 'Toutes les 3 semaines', '1 fois par mois', '1 fois tous les 2 mois', '4 fois par an', '2 fois par an', '1 fois par an', 'Fréquence variable'];
+
+/* ---------- Lot K (v1.14.0) : tâches, confirmations, programme, alertes ---------- */
+export const STATUTS_TACHE = { 'a-faire': 'À faire', 'en-cours': 'En cours', 'en-attente': 'En attente' };
+export const PRIORITES_TACHE = { haute: 'Haute', normale: 'Normale', basse: 'Basse' };
+const rangPriorite = p => p === 'haute' ? 0 : p === 'basse' ? 2 : 1;
+// Tri des tâches : à faire d'abord, puis priorité haute, puis échéance la plus proche
+export function comparerTaches(a, b) {
+  return (a.done ? 1 : 0) - (b.done ? 1 : 0) || rangPriorite(a.priorite) - rangPriorite(b.priorite) || (a.echeance || '9').localeCompare(b.echeance || '9');
+}
+// Texte de confirmation d'inscription (à copier dans un message ou à imprimer) ; `quand` est déjà mis en forme (ex. « mar. 3 décembre · 14h »)
+export function texteConfirmation({ prenom, activite, quand, lieu, cout, modalites, signature }) {
+  return [prenom ? `Bonjour ${prenom},` : 'Bonjour,', '',
+    `Nous avons le plaisir de confirmer votre inscription à « ${activite} »${quand ? ', ' + quand : ''}${lieu ? ', ' + lieu : ''}.`,
+    cout ? `Participation : ${cout}.` : '', modalites ? `À savoir : ${modalites}` : '',
+    'En cas d\'empêchement, merci de nous prévenir pour que la place puisse être proposée à une autre personne.', '', 'À bientôt,', signature || ''].filter((l, i, t) => l !== '' || (t[i - 1] !== '' && i < t.length - 1)).join('\n');
+}
+// Texte proposant une place libérée à la première personne en attente
+export function texteProposition({ prenom, activite, quand, lieu, signature }) {
+  return [prenom ? `Bonjour ${prenom},` : 'Bonjour,', '',
+    `Une place vient de se libérer pour « ${activite} »${quand ? ', ' + quand : ''}${lieu ? ', ' + lieu : ''}. Souhaitez-vous la prendre ?`,
+    'Merci de nous répondre rapidement : à défaut, nous la proposerons à la personne suivante.', '', 'Cordialement,', signature || ''].join('\n');
+}
+// Programme d'une période : activités datées groupées par mois, puis activités régulières (sans date)
+export function programme(activites, du, au) {
+  const datees = activites.filter(a => a.date && a.date >= du && a.date <= au).sort((x, y) => x.date.localeCompare(y.date) || String(x.nom).localeCompare(String(y.nom), 'fr'));
+  const mois = [];
+  for (const a of datees) { const k = a.date.slice(0, 7); let m = mois.find(x => x.mois === k); if (!m) mois.push(m = { mois: k, items: [] }); m.items.push(a); }
+  const regulieres = activites.filter(a => !a.date && (a.jour || a.frequence)).sort((x, y) => String(x.nom).localeCompare(String(y.nom), 'fr'));
+  return { mois, regulieres };
+}
+// Alertes de l'accueil, calculées sur les données déjà chargées (aucune lecture en plus)
+export function alertesAccueil({ activites, inscriptions, seances, taches, auj }) {
+  const A = [], nomAct = id => (activites.find(a => a.id === id) || {}).nom;
+  const ouvertes = taches.filter(t => !t.done);
+  const retard = ouvertes.filter(t => t.echeance && t.echeance < auj).sort((x, y) => x.echeance.localeCompare(y.echeance));
+  if (retard.length) A.push({ niveau: 'crit', texte: `${retard.length} tâche${retard.length > 1 ? 's' : ''} en retard : ${retard.slice(0, 3).map(t => t.titre).join(', ')}${retard.length > 3 ? '…' : ''}`, vue: 'taches' });
+  const hautes = ouvertes.filter(t => t.priorite === 'haute' && !retard.includes(t));
+  if (hautes.length) A.push({ niveau: 'warn', texte: `${hautes.length} tâche${hautes.length > 1 ? 's' : ''} de priorité haute : ${hautes.slice(0, 3).map(t => t.titre).join(', ')}${hautes.length > 3 ? '…' : ''}`, vue: 'taches' });
+  const att = {}; for (const i of inscriptions) if (i.statut === 'attente') att[i.activiteId] = (att[i.activiteId] || 0) + 1;
+  for (const [id, n] of Object.entries(att)) if (nomAct(id)) A.push({ niveau: 'warn', texte: `${n} personne${n > 1 ? 's' : ''} en attente d'une place : ${nomAct(id)}`, act: id });
+  const val = {}; for (const s of seances) if (!s.valide) val[s.activiteId] = (val[s.activiteId] || 0) + 1;
+  for (const [id, n] of Object.entries(val)) if (nomAct(id)) A.push({ niveau: 'info', texte: `${n} appel${n > 1 ? 's' : ''} à valider : ${nomAct(id)}`, act: id });
+  return A;
+}

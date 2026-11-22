@@ -11,6 +11,13 @@ import { S, pret, chargement, $, esc, aujourdhui, ajouterJours, initiales, dateL
 const CATS_TACHE = ['Événements', 'Communication', 'Régie', 'Bénévoles', 'Adhésions', 'Jeunes', 'Administratif', 'Autre'];
 
 /* ============ ACCUEIL ============ */
+// Alertes calculées sur les données déjà chargées (aucune lecture en plus) : tâches en retard ou prioritaires, places en attente, appels à valider
+function alertesCard() {
+  const al = L.alertesAccueil({ activites: S.cache.activites, inscriptions: S.cache.inscriptions, seances: S.cache.seances, taches: S.cache.taches, auj: aujourdhui() });
+  const lib = { crit: ['p-crit', 'Urgent'], warn: ['p-warn', 'À regarder'], info: ['p-bleu', 'À faire'] };
+  return `<div class="card alertes" style="margin-top:16px"><h2>Alertes</h2>${al.length ? al.map(a => `<button class="row" style="width:100%;background:none;border:0;border-top:1px solid var(--ligne);text-align:left" data-action="${a.act ? 'open-act' : 'nav'}" ${a.act ? `data-id="${a.act}"` : `data-v="${a.vue}"`}>
+    <span class="pill ${lib[a.niveau][0]}">${lib[a.niveau][1]}</span><div class="grow">${esc(a.texte)}</div></button>`).join('') : '<div class="empty"><b>Aucune alerte</b>Tout est à jour.</div>'}</div>`;
+}
 export function accueil() {
   const auj = aujourdhui(), sem = ajouterJours(auj, 7);
   const attente = S.cache.inscriptions.filter(i => i.statut === 'attente').length;
@@ -32,6 +39,7 @@ export function accueil() {
     <button class="tile ${aValider ? 'alert' : ''}" data-action="nav" data-v="activites"><span class="n">${aValider}</span><span class="l">Appels à valider</span></button>
     <button class="tile ${retard.length ? 'alert' : ''}" data-action="nav" data-v="taches"><span class="n">${retard.length}</span><span class="l">Tâches en retard</span></button>
   </div>
+  ${alertesCard()}
   <div class="card" style="margin-top:16px"><h2>Que voulez-vous faire ?</h2><div class="quick">
     <button class="btn" data-action="senior-form">+ Nouvelle personne</button>
     <button class="btn blue" data-action="nav" data-v="activites">Activités et appel</button>
@@ -167,28 +175,34 @@ export function taches() {
   const auj = aujourdhui();
   const cats = ['Toutes', ...new Set(S.cache.taches.map(t => t.cat).filter(Boolean))];
   const rows = S.cache.taches.filter(t => S.filtreTache === 'Toutes' || t.cat === S.filtreTache)
-    .sort((a, b) => (a.done - b.done) || (a.echeance || '9').localeCompare(b.echeance || '9'));
+    .filter(t => S.filtreStatutTache === 'tous' || (t.statut || 'a-faire') === S.filtreStatutTache)
+    .sort(L.comparerTaches);
   return `<div class="top"><div><h1>Mes tâches</h1><p>Cochez pour terminer. Les tâches qui se répètent se recréent toutes seules.</p></div><button class="btn" data-action="tache-form">+ Nouvelle tâche</button></div>
   <div class="filters">${cats.map(c => `<button data-action="filtre-tache" data-v="${esc(c)}" aria-pressed="${S.filtreTache === c}">${esc(c)}</button>`).join('')}</div>
+  <div class="filters" aria-label="Filtrer par statut">${[['tous', 'Tous les statuts'], ...Object.entries(L.STATUTS_TACHE)].map(([k, l]) => `<button data-action="filtre-statut-tache" data-v="${k}" aria-pressed="${S.filtreStatutTache === k}">${l}</button>`).join('')}</div>
   <div class="card">${rows.length ? rows.map(t => `<div class="task ${t.done ? 'done' : ''}">
     <input type="checkbox" data-action="tache-done" data-id="${t.id}" ${t.done ? 'checked' : ''} aria-label="Terminer : ${esc(t.titre)}">
     <button style="flex:1;background:none;border:0;text-align:left;padding:0" data-action="tache-form" data-id="${t.id}"><span class="t">${esc(t.titre)}</span><br><small class="sub">${esc(t.cat || '')}${t.responsable ? ' · ' + esc(t.responsable) : ''}${t.echeance ? ' · ' + L.fmtDate(t.echeance) : ''}${t.repete ? ' · se répète' : ''}</small></button>
+    ${!t.done && t.priorite === 'haute' ? '<span class="pill p-crit">Priorité haute</span>' : ''}${!t.done && t.statut === 'en-cours' ? '<span class="pill p-bleu">En cours</span>' : ''}${!t.done && t.statut === 'en-attente' ? '<span class="pill p-warn">En attente</span>' : ''}
     ${t.done ? '<span class="pill p-ok">Fait</span>' : t.echeance && t.echeance < auj ? '<span class="pill p-crit">En retard</span>' : t.echeance && t.echeance <= ajouterJours(auj, 7) ? '<span class="pill p-warn">Cette semaine</span>' : '<span class="pill p-rose">À venir</span>'}</div>`).join('')
     : '<div class="empty"><b>Aucune tâche</b>Ajoutez la première avec le bouton en haut.</div>'}</div>`;
 }
 function tacheForm(id) {
   const t = id ? S.cache.taches.find(x => x.id === id) : { cat: 'Événements', echeance: ajouterJours(aujourdhui(), 7), repete: '' };
+  const st = t.statut || 'a-faire', pr = t.priorite || 'normale';
   modal(`<h2>${id ? 'Modifier la tâche' : 'Nouvelle tâche'}</h2>
   <div class="field"><label for="t1">Intitulé</label><input id="t1" value="${esc(t.titre || '')}"></div>
   <div class="two"><div class="field"><label for="t2">Catégorie</label><input id="t2" list="cats" value="${esc(t.cat || '')}"><datalist id="cats">${CATS_TACHE.map(c => `<option value="${c}">`).join('')}</datalist></div>
   <div class="field"><label for="t3">Échéance</label><input id="t3" type="date" value="${esc(t.echeance || '')}"></div></div>
+  <div class="two"><div class="field"><label for="t6">Statut</label><select id="t6">${Object.entries(L.STATUTS_TACHE).map(([k, l]) => `<option value="${k}" ${st === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+  <div class="field"><label for="t7">Priorité</label><select id="t7">${Object.entries(L.PRIORITES_TACHE).map(([k, l]) => `<option value="${k}" ${pr === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div></div>
   ${champListe('t5', 'tacheResponsable', t.responsable, t.responsableId)}
   <div class="field"><label for="t4">Se répète</label><select id="t4">${[['', 'Jamais'], ['semaine', 'Chaque semaine'], ['mois', 'Chaque mois'], ['an', 'Chaque année']].map(([k, l]) => `<option value="${k}" ${(t.repete || '') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
   <div class="quick" style="margin-top:14px"><button class="btn" id="saveT">Enregistrer</button><button class="btn ghost" data-action="close">Annuler</button>${id ? '<button class="btn ghost" id="delT" style="margin-left:auto">Supprimer</button>' : ''}</div>`);
   $('#saveT').onclick = async () => {
     const titre = $('#t1').value.trim(); if (!titre) return toast('Donnez un intitulé à la tâche.');
     const resp = await lireChamp('t5', 'tacheResponsable'); if (!resp) return;
-    await sauver('taches', { ...(id ? { id } : { done: false }), titre, cat: $('#t2').value.trim(), echeance: $('#t3').value, repete: $('#t4').value, ...resp }, 'Tâche enregistrée'); closeModal();
+    await sauver('taches', { ...(id ? { id } : { done: false }), titre, cat: $('#t2').value.trim(), echeance: $('#t3').value, repete: $('#t4').value, statut: $('#t6').value, priorite: $('#t7').value, ...resp }, 'Tâche enregistrée'); closeModal();
   };
   if (id) $('#delT').onclick = async () => { await mettreCorbeille('taches', t); await store.remove('taches', id); closeModal(); toast('Tâche mise à la corbeille'); };
 }
@@ -205,7 +219,7 @@ export function prochaineEcheance(iso, repete) {
 async function tacheDone(el) {
   const t = S.cache.taches.find(x => x.id === el.dataset.id); if (!t) return;
   await store.save('taches', { id: t.id, done: el.checked });
-  if (el.checked && t.repete && t.echeance) await store.save('taches', { titre: t.titre, cat: t.cat, repete: t.repete, done: false, echeance: prochaineEcheance(t.echeance, t.repete) });
+  if (el.checked && t.repete && t.echeance) await store.save('taches', { titre: t.titre, cat: t.cat, repete: t.repete, done: false, statut: 'a-faire', priorite: t.priorite || 'normale', responsable: t.responsable || '', responsableId: t.responsableId || '', echeance: prochaineEcheance(t.echeance, t.repete) });
 }
 
 /* ============ PLANNING ============ */
@@ -217,22 +231,55 @@ function evenementsDuJour(iso) {
   return ev;
 }
 export function classeCat(cat) { return ({ 'Créatif': 'c1', 'Mémoire': 'c2', 'Culture': 'c3', 'Bien-être': 'c4', 'Événement': 'c5', 'Sortie': 'c1' })[cat] || 'c2'; }
-export function planning() {
-  if (!S.moisPlan) { const d = new Date(); S.moisPlan = { a: d.getFullYear(), m: d.getMonth() }; }
-  const { a, m } = S.moisPlan, auj = aujourdhui();
+// Grille d'un mois (a : année, m : mois de 0 à 11)
+function grilleMois(a, m, auj) {
   const premier = new Date(a, m, 1), nb = new Date(a, m + 1, 0).getDate(), decal = (premier.getDay() + 6) % 7;
   let cells = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map(n => `<div class="h">${n}</div>`).join('') + '<div class="d off"></div>'.repeat(decal);
   for (let d = 1; d <= nb; d++) {
     const iso = `${a}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     cells += `<div class="d ${iso === auj ? 'today' : ''}"><b>${d}</b>${evenementsDuJour(iso).map(e => `<button class="ev ${e.cls}" ${e.id ? `data-action="open-act" data-id="${e.id}"` : ''} title="${esc(e.txt)}">${esc(e.txt)}</button>`).join('')}</div>`;
   }
+  return `<div class="cal-mois">${S.nbMois > 1 ? `<h3 style="margin:0 0 8px;font-size:22px">${MOIS[m]} ${a}</h3>` : ''}<div class="cal">${cells}</div></div>`;
+}
+export function planning() {
+  if (!S.moisPlan) { const d = new Date(); S.moisPlan = { a: d.getFullYear(), m: d.getMonth() }; }
+  const { a, m } = S.moisPlan, auj = aujourdhui(), nbm = S.nbMois || 1;
+  const fin = new Date(a, m + nbm - 1, 1);
+  const titre = nbm === 1 ? `${MOIS[m]} ${a}` : `${MOIS[m]} ${a} – ${MOIS[fin.getMonth()]} ${fin.getFullYear()}`;
+  let grilles = ''; for (let k = 0; k < nbm; k++) { const d = new Date(a, m + k, 1); grilles += grilleMois(d.getFullYear(), d.getMonth(), auj); }
   const admin = S.user.role === 'admin';
   return `<div class="top"><div><h1>Planning</h1><p>Une seule saisie : ce que vous ajoutez dans les activités apparaît ici.</p></div>
-    ${admin ? '<div class="quick"><button class="btn" data-action="affiche">Créer l\'affiche de la semaine</button></div>' : ''}</div>
-  <div class="card"><div class="quick" style="justify-content:space-between;align-items:center;margin-bottom:12px">
-    <button class="btn sec sm" data-action="mois" data-v="-1" aria-label="Mois précédent">← Précédent</button><h2 style="margin:0">${MOIS[m]} ${a}</h2><button class="btn sec sm" data-action="mois" data-v="1" aria-label="Mois suivant">Suivant →</button></div>
-    <div class="cal">${cells}</div>
+    ${admin ? '<div class="quick"><button class="btn" data-action="affiche">Créer l\'affiche de la semaine</button><button class="btn sec" data-action="programme">Programme à imprimer</button></div>' : ''}</div>
+  <div class="card"><div class="filters noprint" aria-label="Nombre de mois affichés">${[1, 2, 3].map(n => `<button data-action="nb-mois" data-v="${n}" aria-pressed="${nbm === n}">${n} mois</button>`).join('')}</div>
+    <div class="quick" style="justify-content:space-between;align-items:center;margin-bottom:12px">
+    <button class="btn sec sm" data-action="mois" data-v="-1" aria-label="Période précédente">← Précédent</button><h2 style="margin:0;text-align:center">${titre}</h2><button class="btn sec sm" data-action="mois" data-v="1" aria-label="Période suivante">Suivant →</button></div>
+    ${grilles}
     <div class="legend"><span class="pill c1">Créatif et sorties</span><span class="pill c2">Mémoire</span><span class="pill c3">Culture</span><span class="pill c4">Bien-être</span><span class="pill c5">Événement</span><span class="pill p-rose">Tâche (pointillés)</span></div></div>`;
+}
+// Programme d'une période : activités datées par mois, puis activités régulières ; à imprimer ou à copier
+function programmeTexte(du, au) {
+  const pg = L.programme(S.cache.activites, du, au);
+  const ligne = a => `${dateLongue(a.date)}${a.jour ? ' · ' + a.jour.split('·').pop().trim() : ''} : ${a.nom}${a.lieu ? ' (' + a.lieu + ')' : ''}${a.cout ? ' · ' + a.cout : ''}`;
+  const reg = a => `${a.nom} : ${[a.jour, a.frequence].filter(Boolean).join(' · ')}${a.lieu ? ' (' + a.lieu + ')' : ''}`;
+  return { pg, ligne, reg, texte: [`Programme du ${L.fmtDate(du)} au ${L.fmtDate(au)}`, ...pg.mois.flatMap(mm => ['', MOIS[Number(mm.mois.slice(5)) - 1].toUpperCase() + ' ' + mm.mois.slice(0, 4), ...mm.items.map(ligne)]), ...(pg.regulieres.length ? ['', 'ACTIVITÉS RÉGULIÈRES', ...pg.regulieres.map(reg)] : [])].join('\n') };
+}
+function programme() {
+  const auj = aujourdhui(), d0 = new Date(), fin0 = new Date(d0.getFullYear(), d0.getMonth() + 3, 0), p2 = n => String(n).padStart(2, '0');
+  modal(`<h2>Programme à imprimer</h2><p class="sub noprint">Choisissez la période : le programme reprend les activités qui ont une date, puis les activités régulières.</p>
+  <div class="two noprint"><div class="field"><label for="pg1">Du</label><input id="pg1" type="date" value="${auj}"></div><div class="field"><label for="pg2">Au</label><input id="pg2" type="date" value="${fin0.getFullYear()}-${p2(fin0.getMonth() + 1)}-${p2(fin0.getDate())}"></div></div>
+  <div id="pg-zone"></div>
+  <div class="quick noprint" style="margin-top:14px"><button class="btn" id="pg-imp">Imprimer</button><button class="btn sec" id="pg-cp">Copier le texte</button><button class="btn ghost" data-action="close">Fermer</button></div>`);
+  const maj = () => {
+    const du = $('#pg1').value, au = $('#pg2').value; if (!du || !au || du > au) { $('#pg-zone').innerHTML = '<p class="sub">Choisissez une période valide.</p>'; return; }
+    const { pg, ligne, reg } = programmeTexte(du, au);
+    $('#pg-zone').innerHTML = `<div class="feuille"><h3>Programme</h3><div class="sub">${esc(P('affiche.lieu') || P('nomService'))} · du ${L.fmtDate(du)} au ${L.fmtDate(au)}</div>
+      ${pg.mois.map(mm => `<h4>${MOIS[Number(mm.mois.slice(5)) - 1]} ${mm.mois.slice(0, 4)}</h4><ul>${mm.items.map(a => `<li>${esc(ligne(a))}</li>`).join('')}</ul>`).join('')}
+      ${pg.regulieres.length ? `<h4>Activités régulières</h4><ul>${pg.regulieres.map(a => `<li>${esc(reg(a))}</li>`).join('')}</ul>` : ''}
+      ${!pg.mois.length && !pg.regulieres.length ? '<p>Aucune activité sur cette période.</p>' : ''}<p class="sub" style="margin-top:12px">${esc(P('affiche.pied'))}</p></div>`;
+  };
+  $('#pg1').onchange = maj; $('#pg2').onchange = maj; maj();
+  $('#pg-imp').onclick = () => window.print();
+  $('#pg-cp').onclick = () => { const du = $('#pg1').value, au = $('#pg2').value; if (du && au && du <= au) copier(programmeTexte(du, au).texte, 'Programme copié'); };
 }
 function affiche() {
   const debut = aujourdhui(), fin = ajouterJours(debut, 7);
@@ -290,7 +337,11 @@ export const actions = {
   'filtre-statut': el => { S.filtreStatut = el.dataset.v; render(); },
   'tache-form': el => tacheForm(el.dataset.id),
   'filtre-tache': el => { S.filtreTache = el.dataset.v; render(); },
-  mois: el => { let { a, m } = S.moisPlan; m += Number(el.dataset.v); if (m < 0) { m = 11; a--; } if (m > 11) { m = 0; a++; } S.moisPlan = { a, m }; render(); },
+  'filtre-statut-tache': el => { S.filtreStatutTache = el.dataset.v; render(); },
+  // « Précédent » et « Suivant » avancent d'autant de mois que ceux affichés (1, 2 ou 3)
+  mois: el => { const d = new Date(S.moisPlan.a, S.moisPlan.m + Number(el.dataset.v) * (S.nbMois || 1), 1); S.moisPlan = { a: d.getFullYear(), m: d.getMonth() }; render(); },
+  'nb-mois': el => { S.nbMois = Number(el.dataset.v) || 1; render(); },
+  programme: () => programme(),
   affiche: () => affiche(),
   'export-bilan': () => exportBilan(),
   imprimer: () => window.print()

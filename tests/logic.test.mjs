@@ -283,4 +283,38 @@ const t2 = donneesDemo(); assert.ok(t2.fiches.every(f => f.id === `${f.activiteI
   assert.equal(L.csvEscape('a;b'), '"a;b"');
 });
 
+
+/* ---- v1.14.0 (lot K) ---- */
+t('tâches : tri par priorité puis échéance, terminées en dernier', () => {
+  const r = [{ done: false, priorite: 'basse', echeance: '2026-01-01' }, { done: true, priorite: 'haute' }, { done: false, priorite: 'haute', echeance: '2027-01-01' }, { done: false, echeance: '2026-05-01' }].sort(L.comparerTaches);
+  assert.deepEqual(r.map(x => x.priorite || '-'), ['haute', '-', 'basse', 'haute']);
+  assert.equal(r[3].done, true);
+});
+t('confirmation d\'inscription : prénom, activité, date, coût ; sans ligne vide en trop', () => {
+  const x = L.texteConfirmation({ prenom: 'Rose', activite: 'Chorale', quand: 'mar. 3 décembre · 14h', lieu: 'Salle 1', cout: 'gratuite', modalites: '', signature: 'Service' });
+  assert.match(x, /^Bonjour Rose,/); assert.match(x, /« Chorale », mar\. 3 décembre · 14h, Salle 1\./); assert.match(x, /Participation : gratuite\./);
+  assert.ok(!/\n\n\n/.test(x)); assert.ok(!/À savoir/.test(x));
+  assert.match(L.texteConfirmation({ activite: 'X' }), /^Bonjour,/);
+});
+t('proposition de place libérée', () => assert.match(L.texteProposition({ prenom: 'Léa', activite: 'Marche', quand: 'lun. 1er', lieu: '' }), /Une place vient de se libérer pour « Marche », lun\. 1er\./));
+t('programme : activités datées par mois (triées) puis régulières ; hors période exclues', () => {
+  const p = L.programme([{ nom: 'B', date: '2026-12-03' }, { nom: 'A', date: '2026-12-01' }, { nom: 'C', date: '2027-01-05' }, { nom: 'R', jour: 'Lundis' }, { nom: 'Vide' }, { nom: 'Z', date: '2027-05-01' }], '2026-12-01', '2027-01-31');
+  assert.deepEqual(p.mois.map(m => [m.mois, m.items.map(a => a.nom)]), [['2026-12', ['A', 'B']], ['2027-01', ['C']]]);
+  assert.deepEqual(p.regulieres.map(a => a.nom), ['R']);
+});
+t('alertes de l\'accueil : retard, priorité haute, attente, appels à valider', () => {
+  const al = L.alertesAccueil({ activites: [{ id: 'a', nom: 'Chorale' }], inscriptions: [{ activiteId: 'a', statut: 'attente' }, { activiteId: 'a', statut: 'inscrit' }, { activiteId: 'zz', statut: 'attente' }], seances: [{ activiteId: 'a', valide: false }, { activiteId: 'a', valide: true }],
+    taches: [{ titre: 'T', echeance: '2026-11-01', done: false }, { titre: 'U', priorite: 'haute', echeance: '2027-01-01' }, { titre: 'V', done: true, echeance: '2026-01-01' }], auj: '2026-11-23' });
+  assert.deepEqual(al.map(x => x.niveau), ['crit', 'warn', 'warn', 'info']);
+  assert.match(al[0].texte, /1 tâche en retard : T/); assert.match(al[1].texte, /priorité haute : U/); assert.match(al[2].texte, /1 personne en attente d'une place : Chorale/); assert.match(al[3].texte, /1 appel à valider : Chorale/);
+  assert.deepEqual(L.alertesAccueil({ activites: [], inscriptions: [], seances: [], taches: [], auj: '2026-11-23' }), []);
+});
+t('chargement du planning : une seule lecture couvrant 1, 2 ou 3 mois', () => {
+  const lit = nb => besoins({ role: 'admin', view: 'planning', mois: { a: 2026, m: 10 }, nbMois: nb, auj: '2026-11-23', activites: [], mesActivites: [] }).filter(b => b.col === 'seances');
+  assert.equal(lit(1).length, 1); assert.deepEqual(lit(1)[0].filtre, [['date', '>=', '2026-11-01'], ['date', '<=', '2026-11-30']]);
+  assert.deepEqual(lit(3)[0].filtre, [['date', '>=', '2026-11-01'], ['date', '<=', '2027-01-31']]);
+  assert.deepEqual(lit(9)[0].filtre, [['date', '>=', '2026-11-01'], ['date', '<=', '2027-01-31']]);
+  assert.deepEqual(lit(undefined)[0].filtre, lit(1)[0].filtre);
+});
+
 console.log('ok - identifiants des fiches de démonstration');

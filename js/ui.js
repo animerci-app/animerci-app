@@ -7,7 +7,7 @@ export const S = {
   cache: { seniors: [], activites: [], inscriptions: [], seances: [], fiches: [], taches: [], contacts: [], users: [], corbeille: [], journal: [], parametres: [] },
   view: 'home', actId: null, tab: 'inscriptions',
   rules: { moins: true, abs: true, res: false },
-  moisPlan: null, appel: null, filtreTache: 'Toutes', recherche: '', filtreStatut: 'tous', filtreContact: 'Tous',
+  moisPlan: null, nbMois: 1, appel: null, filtreTache: 'Toutes', filtreStatutTache: 'tous', recherche: '', filtreStatut: 'tous', filtreContact: 'Tous',
   stat: { du: '', au: '' }, erreur: '', mdpLongueur: 0, navId: 0, compteurs: {}, compteursNav: -1, pret: new Set()
 };
 
