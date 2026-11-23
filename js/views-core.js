@@ -5,6 +5,7 @@ import { P } from './parametres.js';
 import { champListe, lireChamp } from './annuaire.js';
 import { itemPersonne } from './recherche.js';
 import { fusionForm } from './fusion.js';
+import * as adhs from './adhesions.js';
 import { store } from './store.js';
 import { S, pret, chargement, $, esc, aujourdhui, ajouterJours, initiales, dateLongue, JOURS, MOIS, go, render, toast, modal, closeModal, confirmer, telecharger, copier, sauver, mettreCorbeille, seniorDe, actDe, validees } from './ui.js';
 
@@ -13,7 +14,7 @@ const CATS_TACHE = ['Événements', 'Communication', 'Régie', 'Bénévoles', 'A
 /* ============ ACCUEIL ============ */
 // Alertes calculées sur les données déjà chargées (aucune lecture en plus) : tâches en retard ou prioritaires, places en attente, appels à valider
 function alertesCard() {
-  const al = L.alertesAccueil({ activites: S.cache.activites, inscriptions: S.cache.inscriptions, seances: S.cache.seances, taches: S.cache.taches, auj: aujourdhui(), echanges: S.cache.echanges, conventions: S.cache.conventions, joursConv: P('partenaires.alerteJours'), materiel: S.cache.materiel, emprunts: S.cache.emprunts.filter(e => !e.rendu), joursPeremption: P('materiel.alertePeremptionJours') });
+  const al = L.alertesAccueil({ activites: S.cache.activites, inscriptions: S.cache.inscriptions, seances: S.cache.seances, taches: S.cache.taches, auj: aujourdhui(), echanges: S.cache.echanges, conventions: S.cache.conventions, fiches: S.compteursFiches || null, joursConv: P('partenaires.alerteJours'), materiel: S.cache.materiel, emprunts: S.cache.emprunts.filter(e => !e.rendu), joursPeremption: P('materiel.alertePeremptionJours') });
   const lib = { crit: ['p-crit', 'Urgent'], warn: ['p-warn', 'À regarder'], info: ['p-bleu', 'À faire'] };
   return `<div class="card alertes" style="margin-top:16px"><h2>Alertes</h2>${al.length ? al.map(a => `<button class="row" style="width:100%;background:none;border:0;border-top:1px solid var(--ligne);text-align:left" data-action="${a.act ? 'open-act' : 'nav'}" ${a.act ? `data-id="${a.act}"` : `data-v="${a.vue}"${a.tab ? ` data-tab="${a.tab}"` : ''}`}>
     <span class="pill ${lib[a.niveau][0]}">${lib[a.niveau][1]}</span><div class="grow">${esc(a.texte)}</div></button>`).join('') : '<div class="empty"><b>Aucune alerte</b>Tout est à jour.</div>'}</div>`;
@@ -84,18 +85,28 @@ function listeSeniors() {
 }
 export function seniors() {
   if (!pret('seniors')) return chargement('Personnes');
+  if (adhs.ongletSen() === 'adhesions') return enteteSeniors() + adhs.barreOnglets() + adhs.vueAdhesions();
+  if (adhs.ongletSen() === 'verification') return enteteSeniors() + adhs.barreOnglets() + adhs.vueVerification();
+  return seniorsListe();
+}
+function enteteSeniors() { return `<div class="top"><div><h1>Personnes</h1><p>Adhésions par année civile et vérification annuelle des fiches.</p></div><div class="quick"><button class="btn" data-action="senior-form">+ Nouvelle personne</button></div></div>`; }
+function seniorsListe() {
   const adh = S.cache.seniors.filter(s => !L.adhesionAJour(s)).length;
   return `<div class="top"><div><h1>Personnes</h1><p>${S.cache.seniors.length} fiche${S.cache.seniors.length > 1 ? 's' : ''}${adh ? ` · ${adh} adhésion${adh > 1 ? 's' : ''} à renouveler` : ''}</p></div>
     <div class="quick"><button class="btn" data-action="senior-form">+ Nouvelle personne</button><button class="btn sec" data-action="importer" data-cible="seniors">Importer une liste</button><button class="btn sec" data-action="export-seniors">Exporter (Excel)</button></div></div>
+  ${adhs.barreOnglets()}
   <input class="search" id="rech" type="search" placeholder="Chercher : nom, prénom, nom de jeune fille, date de naissance (jj/mm/aaaa ou année)…" aria-label="Chercher une personne" value="${esc(S.recherche)}">
   <div class="filters">${[['tous', 'Tous'], ['adherent', 'Adhérents'], ['resident', 'Résidents'], ['autre', 'Autres'], ['portage', 'Portage de repas']].map(([k, l]) => `<button data-action="filtre-statut" data-v="${k}" aria-pressed="${S.filtreStatut === k}">${l}</button>`).join('')}</div>
   <div id="liste">${listeSeniors()}</div>`;
 }
-export function afterSeniors() { const r = $('#rech'); if (r) r.oninput = () => { S.recherche = r.value; $('#liste').innerHTML = listeSeniors(); }; }
+export function afterSeniors() { adhs.migrer(); adhs.apresAdhesions(); const r = $('#rech'); if (r) r.oninput = () => { S.recherche = r.value; $('#liste').innerHTML = listeSeniors(); }; }
 
 function seniorForm(id) {
-  const s = id ? seniorDe(id) : { statut: 'adherent', sexe: '', commune: P('commune.defaut'), adhesion: { date: aujourdhui(), montant: P('adhesion.montantDefaut'), paye: false } };
-  const adh = s.adhesion || { date: aujourdhui(), montant: P('adhesion.montantDefaut'), paye: false };
+  const s = id ? seniorDe(id) : { statut: 'adherent', sexe: '', commune: P('commune.defaut') };
+  const anCour = Number(aujourdhui().slice(0, 4)), histo = L.adhesionsDe(s), tel = L.telephones(s), prox = L.prochesDe(s);
+  const annees = [...new Set([...histo.map(a => a.annee), anCour, L.anneeCible(aujourdhui(), P('adhesion.relanceMois'))])].sort((a, b) => b - a);
+  const adhDe = an => histo.find(a => a.annee === an) || { annee: an, date: aujourdhui(), montant: P('adhesion.montantDefaut'), paye: false, mode: '', datePaiement: '' };
+  const adh = adhDe(anCour), modes = P('adhesion.modes');
   modal(`<h2>${id ? 'Fiche de ' + esc(s.prenom) : 'Nouvelle personne'}</h2>
   <div class="two"><div class="field"><label for="n1">Prénom</label><input id="n1" value="${esc(s.prenom || '')}" autocomplete="off"></div>
   <div class="field"><label for="n2">Nom</label><input id="n2" value="${esc(s.nom || '')}" autocomplete="off"></div></div>
@@ -112,18 +123,38 @@ function seniorForm(id) {
   <div id="blocPortage" style="display:none"><fieldset class="field" style="border:0;padding:0;margin:0"><legend class="sub">Jours de livraison</legend>
     <div class="filters">${L.JOURS_PORTAGE.map((j, i) => `<label class="chk" style="margin-right:10px"><input type="checkbox" class="pj" value="${i}" ${s.portage && (s.portage.jours || []).includes(i) ? 'checked' : ''}> ${j}</label>`).join('')}</div></fieldset>
     <div class="field"><label for="n14">Précision <small class="sub">(facultatif, ex. « au choix », « sauf jours fériés »)</small></label><input id="n14" value="${esc(s.portage ? s.portage.precision || '' : '')}" autocomplete="off"></div></div>
-  <div class="field"><label for="n7">Téléphone</label><input id="n7" type="tel" value="${esc(s.tel || '')}"></div>
-  <div class="two"><div class="field"><label for="n8">Personne à prévenir</label><input id="n8" value="${esc(s.contactNom || '')}" placeholder="Lien et prénom"></div>
-  <div class="field"><label for="n9">Son téléphone</label><input id="n9" type="tel" value="${esc(s.contactTel || '')}"></div></div>
-  <div id="blocAdh"><div class="two"><div class="field"><label for="a1">Date d'adhésion</label><input id="a1" type="date" value="${esc(adh.date || '')}"></div>
-  <div class="field"><label for="a2">Montant (€)</label><input id="a2" type="number" min="0" step="1" value="${esc(adh.montant != null ? adh.montant : P('adhesion.montantDefaut'))}"></div></div>
-  <label class="chk" style="margin:6px 0"><input type="checkbox" id="a3" ${adh.paye ? 'checked' : ''}> Cotisation réglée</label></div>
+  <div class="two"><div class="field"><label for="n7">Téléphone fixe</label><input id="n7" type="tel" value="${esc(tel.fixe)}"></div>
+  <div class="field"><label for="n16">Téléphone portable</label><input id="n16" type="tel" value="${esc(tel.portable)}"></div></div>
+  <div class="field"><label for="n17">Adresse e-mail <small class="sub">(facultatif)</small></label><input id="n17" type="email" value="${esc(s.email || '')}" autocomplete="off"></div>
+  <div class="two"><div class="field"><label for="n18">Quartier ou secteur <small class="sub">(facultatif, pour organiser les trajets)</small></label><input id="n18" value="${esc(s.quartier || '')}" autocomplete="off"></div>
+  <div class="field"><label for="n19">Date d'entrée dans le service <small class="sub">(facultatif)</small></label><input id="n19" type="date" value="${esc(s.entreeLe || '')}"></div></div>
+  <fieldset class="field" style="border:0;padding:0;margin:0"><legend class="sub">Proches à prévenir (3 au plus : nom, lien, téléphone)</legend>
+    ${[0, 1, 2].map(k => { const p = prox[k] || {}; return `<div class="two" style="grid-template-columns:2fr 1.2fr 1.4fr"><input id="pr${k}n" aria-label="Proche ${k + 1} : nom" placeholder="Prénom et nom" value="${esc(p.nom || '')}" autocomplete="off"><input id="pr${k}l" aria-label="Proche ${k + 1} : lien" placeholder="Lien (fille, voisin…)" value="${esc(p.lien || '')}" autocomplete="off"><input id="pr${k}t" type="tel" aria-label="Proche ${k + 1} : téléphone" placeholder="Téléphone" value="${esc(p.tel || '')}"></div>`; }).join('')}</fieldset>
+  <div class="field"><label for="n20">Informations d'organisation <small class="sub">(facultatif)</small></label><textarea id="n20" rows="2">${esc(s.infosOrga || '')}</textarea>
+    <div class="note" style="margin:4px 0 0"><b>✔ À écrire</b> : une information d'organisation, par exemple « préfère les activités l'après-midi », « vient avec une voisine », « à appeler avant de passer ».<br><b>✘ À ne pas écrire</b> : toute information de santé (maladie, handicap, médicament, allergie, perte d'autonomie). Un champ libre ne peut pas être contrôlé par l'outil : la règle vaut pour tous.</div></div>
+  <div id="blocAdh"><h3 style="margin:12px 0 4px">Adhésion (année civile)</h3>
+  <div class="two"><div class="field"><label for="a4">Année</label><select id="a4">${annees.map(a => `<option value="${a}" ${a === anCour ? 'selected' : ''}>${a}</option>`).join('')}</select></div>
+  <div class="field"><label for="a1">Date d'adhésion</label><input id="a1" type="date" value="${esc(adh.date || '')}"></div></div>
+  <div class="two"><div class="field"><label for="a2">Montant (€)</label><input id="a2" type="number" min="0" step="1" value="${esc(adh.montant != null ? adh.montant : P('adhesion.montantDefaut'))}"></div>
+  <div class="field"><label for="a5">Mode de règlement</label><select id="a5"><option value="">—</option>${modes.map(m => `<option ${adh.mode === m ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select></div></div>
+  <label class="chk" style="margin:6px 0"><input type="checkbox" id="a3" ${adh.paye ? 'checked' : ''}> Cotisation réglée</label>
+  <div class="field" id="blocReg"><label for="a6">Réglée le</label><input id="a6" type="date" value="${esc(adh.datePaiement || '')}"></div>
+  <p class="sub" id="histAdh">${histo.length ? 'Historique : ' + histo.slice().reverse().map(a => `${a.annee} ${a.paye ? 'réglée' : 'à régler'}`).join(' · ') : 'Aucune adhésion enregistrée.'}</p></div>
   <p class="sub">Ne notez ici aucune information de santé : AniMerci n'en contient pas (ni allergie, ni maladie, ni médicament, ni handicap).</p>
   <div class="quick" style="margin-top:14px"><button class="btn" id="saveSenior">Enregistrer</button><button class="btn ghost" data-action="close">Annuler</button>
   ${id ? '<button class="btn ghost" id="fusSenior">Fusionner avec un doublon…</button><button class="btn ghost" id="delSenior" style="margin-left:auto">Supprimer</button>' : ''}</div>`);
   if (id) $('#fusSenior').onclick = () => fusionForm(id);
   const maj = () => { const r = $('#n5').value === 'resident'; $('#blocAdh').style.display = $('#n5').value === 'adherent' ? 'block' : 'none'; $('#blocAdr').style.display = r ? 'none' : 'block'; $('#infoRes').style.display = r ? 'block' : 'none'; };
   $('#n5').onchange = maj; maj();
+  let anChoisie = anCour, edit = { [anCour]: { ...adh } }; const touche = new Set();
+  for (const k of ['a1', 'a2', 'a3', 'a5', 'a6']) $('#' + k).addEventListener('change', () => touche.add(anChoisie));
+  const lireAdh = () => ({ annee: anChoisie, date: $('#a1').value, montant: $('#a2').value, paye: $('#a3').checked, mode: $('#a5').value, datePaiement: $('#a6').value });
+  const majReg = () => { $('#blocReg').style.display = $('#a3').checked ? 'block' : 'none'; };
+  $('#a3').onchange = () => { if ($('#a3').checked && !$('#a6').value) $('#a6').value = aujourdhui(); majReg(); }; majReg();
+  $('#a4').onchange = () => {
+    edit[anChoisie] = lireAdh(); anChoisie = Number($('#a4').value); const a = edit[anChoisie] || adhDe(anChoisie);
+    $('#a1').value = a.date || ''; $('#a2').value = a.montant != null ? a.montant : P('adhesion.montantDefaut'); $('#a3').checked = !!a.paye; $('#a5').value = a.mode || ''; $('#a6').value = a.datePaiement || ''; majReg();
+  };
   const majPortage = () => { $('#blocPortage').style.display = $('#n13').checked ? 'block' : 'none'; };
   $('#n13').onchange = majPortage; majPortage();
   $('#saveSenior').onclick = async () => {
@@ -134,9 +165,20 @@ function seniorForm(id) {
     const autres = S.cache.seniors.filter(x => x.id !== id), nomNaissance = $('#n10').value.trim(), memes = L.homonymes({ id, prenom, nom, nomNaissance }, autres);
     if (memes.length && !naissance) return toast('Une autre personne porte le même nom : renseignez la date de naissance pour les distinguer.');
     if (memes.some(x => x.naissance && x.naissance === naissance)) return toast(`${prenom} ${nom}, née le ${L.fmtDate(naissance)}, est déjà enregistrée. Si ce sont bien deux personnes différentes, ajoutez par exemple un second prénom au nom pour les distinguer.`);
-    const doc = { ...(id ? { id } : {}), nom, nomNaissance, prenom, naissance, sexe: $('#n4').value, statut, adresse: statut === 'resident' ? '' : $('#n6').value.trim(), commune: statut === 'resident' ? '' : $('#n11').value.trim(), prenomAConfirmer: $('#n12').checked, appartement: statut === 'resident' ? $('#n15').value.trim() : '', portage: $('#n13').checked ? { jours: [...document.querySelectorAll('.pj:checked')].map(c => Number(c.value)), precision: $('#n14').value.trim() } : null, tel: $('#n7').value.trim(),
-      contactNom: $('#n8').value.trim(), contactTel: $('#n9').value.trim(),
-      adhesion: statut !== 'adherent' ? null : { date: $('#a1').value, montant: Number($('#a2').value) || 0, paye: $('#a3').checked } };
+    const doc = { ...(id ? { id } : {}), nom, nomNaissance, prenom, naissance, sexe: $('#n4').value, statut, adresse: statut === 'resident' ? '' : $('#n6').value.trim(), commune: statut === 'resident' ? '' : $('#n11').value.trim(), prenomAConfirmer: $('#n12').checked, appartement: statut === 'resident' ? $('#n15').value.trim() : '', portage: $('#n13').checked ? { jours: [...document.querySelectorAll('.pj:checked')].map(c => Number(c.value)), precision: $('#n14').value.trim() } : null, telFixe: $('#n7').value.trim(), telPortable: $('#n16').value.trim(), email: $('#n17').value.trim(), quartier: $('#n18').value.trim(), entreeLe: $('#n19').value, infosOrga: $('#n20').value.trim(),
+      proches: [0, 1, 2].map(k => ({ nom: $(`#pr${k}n`).value, lien: $(`#pr${k}l`).value, tel: $(`#pr${k}t`).value })),
+      verifieLe: s.verifieLe || '', verifiePar: s.verifiePar || '',
+      adhesions: histo };
+    if (statut === 'adherent') {
+      edit[anChoisie] = lireAdh();
+      for (const an of Object.keys(edit)) {
+        const a = edit[an]; if (!histo.some(x => x.annee === Number(an)) && !touche.has(Number(an)) && !(!id && Number(an) === anCour)) continue; // année simplement consultée : rien à créer
+        if (a.paye && !a.datePaiement) a.datePaiement = a.date || aujourdhui();
+        const err = L.erreurAdhesion({ ...a, annee: Number(an) }); if (err) return toast(`Adhésion ${an} : ${err}`);
+        doc.adhesions = L.avecAdhesion({ ...doc, adhesions: doc.adhesions }, { ...a, annee: Number(an) });
+      }
+    }
+    Object.assign(doc, L.champsCalcules(doc));
     const nid = await sauver('seniors', doc, 'Fiche enregistrée');
     // met à jour le nom recopié dans les inscriptions et fiches (les intervenants ne voient que ces copies) :
     // pour la personne, et pour ses homonymes (leur libellé « (né·e en …) » change selon qu'un·e homonyme existe ou non)
@@ -164,7 +206,9 @@ function exportSeniors() {
   const cols = [
     { label: 'Nom', get: s => s.nom }, { label: 'Nom de jeune fille', get: s => s.nomNaissance }, { label: 'Prénom', get: s => s.prenom }, { label: 'Sexe', get: s => s.sexe || 'Non précisé' },
     { label: 'Date de naissance', get: s => L.fmtDate(s.naissance) }, { label: 'Âge', get: s => L.age(s.naissance) },
-    { label: 'Statut', get: s => L.libelleStatut(s.statut) }, { label: 'Lieu de vie', get: s => L.lieuDeVie(s, P('residence.nom')) }, { label: 'Appartement', get: s => s.appartement }, { label: 'Adresse', get: s => s.adresse }, { label: 'Téléphone', get: s => s.tel },
+    { label: 'Statut', get: s => L.libelleStatut(s.statut) }, { label: 'Lieu de vie', get: s => L.lieuDeVie(s, P('residence.nom')) }, { label: 'Appartement', get: s => s.appartement }, { label: 'Adresse', get: s => s.adresse }, { label: 'Tél. fixe', get: s => L.telephones(s).fixe }, { label: 'Tél. portable', get: s => L.telephones(s).portable }, { label: 'E-mail', get: s => s.email }, { label: 'Quartier', get: s => s.quartier },
+    { label: 'Proches', get: s => L.prochesDe(s).map(p => [p.nom, p.lien, p.tel].filter(Boolean).join(', ')).join(' ; ') }, { label: 'Dernière vérification', get: s => L.fmtDate(s.verifieLe) },
+    { label: 'Adhésion ' + new Date().getFullYear() + ' réglée', get: s => s.statut === 'adherent' ? (L.adhesionAJour(s) ? 'oui' : 'non') : '' },
     { label: 'Adhésion à jour', get: s => L.adhesionAJour(s) ? 'oui' : 'non' }
   ];
   telecharger('personnes.csv', L.toCSV(cols, S.cache.seniors));
@@ -331,7 +375,7 @@ function exportBilan() {
 
 /* ============ ACTIONS ============ */
 export const actions = {
-  nav: el => { if (el.dataset.tab) { if (el.dataset.v === 'materiel') S.ongletMat = el.dataset.tab; else S.ongletPart = el.dataset.tab; } go(el.dataset.v); },
+  nav: el => { if (el.dataset.tab) { if (el.dataset.v === 'materiel') S.ongletMat = el.dataset.tab; else if (el.dataset.v === 'seniors') S.ongletSen = el.dataset.tab; else S.ongletPart = el.dataset.tab; } go(el.dataset.v); },
   'senior-form': el => seniorForm(el.dataset.id),
   'export-seniors': () => exportSeniors(),
   'filtre-statut': el => { S.filtreStatut = el.dataset.v; render(); },

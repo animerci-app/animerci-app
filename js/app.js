@@ -8,6 +8,7 @@ import * as eq from './views-equipe.js';
 import * as ann from './annuaire.js';
 import * as part from './partenaires.js';
 import * as mat from './materiel.js';
+import * as adhs from './adhesions.js';
 import { installerRecherche, oublierRecents, champRecherche, itemPersonne, itemContact, itemActivite, AIDE_PERSONNE } from './recherche.js';
 import * as imp from './importer.js';
 import * as pwa from './pwa.js';
@@ -51,6 +52,8 @@ function synchroniser() {
     actifs.add(k); listen(b.col, b.key, b.filtre, b.opts);
   }
   // Écran « Activités » : places prises par activité, comptées côté serveur (beaucoup moins de lectures que de tout télécharger)
+  // Accueil : alertes « adhésions » et « fiches à vérifier » comptées côté serveur (2 lectures, aucune fiche téléchargée)
+  if (u.role === 'admin' && S.view === 'home' && S.compteursFichesNav !== S.navId) { S.compteursFichesNav = S.navId; const nav = S.navId; adhs.compterFiches().then(r => { if (nav === S.navId && S.user) { S.compteursFiches = r; planifierRendu(); } }).catch(e => console.warn('comptage des fiches', e)); }
   if (u.role === 'admin' && S.view === 'activites' && S.compteursNav !== S.navId && S.cache.activites.length) { S.compteursNav = S.navId; compterPlaces(S.navId); }
 }
 async function compterPlaces(navId) {
@@ -70,7 +73,7 @@ function demarrer() {
   if (S.user && S.user.role === 'admin') minuteurPurge = setTimeout(sec.purger, 5000);
   synchroniser();
 }
-function arreter() { clearTimeout(minuteurPurge); unsubs.forEach(u => u()); unsubs = []; parts = {}; actifs = new Set(); S.pret = new Set(); S.rechGlobale = false; S.matPersonnes = false; S.matHisto = null; S.ongletMat = 'inventaire'; S.fEmprunt = 'encours'; S.anMat = ''; S.rechMat = ''; S.fCatMat = ''; S.fEmpMat = ''; S.fSaisonMat = ''; S.fSigMat = false; S.compteurs = {}; S.compteursNav = -1; COLS_ECOUTE.forEach(c => { S.cache[c] = []; }); }
+function arreter() { clearTimeout(minuteurPurge); unsubs.forEach(u => u()); unsubs = []; parts = {}; actifs = new Set(); S.pret = new Set(); S.rechGlobale = false; S.matPersonnes = false; S.compteursFiches = null; S.compteursFichesNav = -1; S.ongletSen = 'liste'; S.anAdh = 0; S.fAdh = 'encours'; S.rechAdh = ''; S.migrationFaite = false; S.matHisto = null; S.ongletMat = 'inventaire'; S.fEmprunt = 'encours'; S.anMat = ''; S.rechMat = ''; S.fCatMat = ''; S.fEmpMat = ''; S.fSaisonMat = ''; S.fSigMat = false; S.compteurs = {}; S.compteursNav = -1; COLS_ECOUTE.forEach(c => { S.cache[c] = []; }); }
 
 /* ---------- Écrans ---------- */
 function ecranConnexion() {
@@ -122,7 +125,7 @@ setRender(() => {
 
 /* ---------- Événements ---------- */
 const actions = {
-  ...core.actions, ...act.actions, ...eq.actions, ...ann.actions, ...part.actions, ...mat.actions, ...sec.actions, ...pa.actions, ...imp.actions, ...pwa.actions,
+  ...core.actions, ...act.actions, ...eq.actions, ...ann.actions, ...part.actions, ...mat.actions, ...adhs.actions, ...sec.actions, ...pa.actions, ...imp.actions, ...pwa.actions,
   'rech-globale': () => rechGlobale(),
   close: () => closeModal(),
   compte: () => {

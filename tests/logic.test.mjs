@@ -462,3 +462,73 @@ console.log('ok - identifiants des fiches de démonstration');
   assert.ok(!cols(besoins({ ...base, role: 'partenaire', uid: 'p', view: 'materiel' })).some(x => /materiel|emprunts/.test(x)), 'le partenaire n\'a aucun accès au matériel');
   console.log('ok - lot A : chargement à la demande du matériel');
 }
+
+/* ---------- Lot F (1.18.0) : fiches enrichies, adhésions par année, vérification ---------- */
+{
+  const AUJ = '2026-11-23';
+  // année cible : à partir du mois de début (décembre par défaut)
+  assert.equal(L.anneeCible('2026-11-30'), 2026); assert.equal(L.anneeCible('2026-12-01'), 2027); assert.equal(L.anneeCible('2026-10-01', 10), 2027); assert.equal(L.anneeCible('2027-01-02'), 2027);
+  // ancien format → adhésions
+  const vieux = { id: 'a', statut: 'adherent', nom: 'Dupont', prenom: 'Anne', adhesion: { date: '2026-01-10', montant: 40, paye: true }, tel: '06 11 22 33 44', contactNom: 'Fille : Sophie', contactTel: '03 20 00 00 00' };
+  assert.deepEqual(L.adhesionsDe(vieux).map(a => [a.annee, a.montant, a.paye]), [[2026, 40, true]]);
+  assert.equal(L.adhesionAJour(vieux, 2026), true); assert.equal(L.adhesionAJour(vieux, 2027), false);
+  assert.equal(L.adhesionAJour({ statut: 'resident' }, 2030), true); assert.equal(L.adhesionAJour({ statut: 'autre' }, 2030), true);
+  assert.deepEqual(L.adhesionsDe({ statut: 'adherent' }), []); assert.deepEqual(L.adhesionsDe(null), []);
+  assert.equal(L.adhesionsDe(vieux)[0].datePaiement, '2026-01-10', 'ancienne adhésion réglée sans date de règlement : la date d\'adhésion en tient lieu');
+  // statuts
+  assert.equal(L.statutAdhesion(vieux, 2026), 'reglee'); assert.equal(L.statutAdhesion(vieux, 2027), 'a-renouveler');
+  assert.equal(L.statutAdhesion({ statut: 'adherent' }, 2026), 'a-regler', 'jamais réglée : à régler');
+  assert.equal(L.statutAdhesion({ statut: 'adherent', adhesions: [{ annee: 2026, date: '2026-02-01', montant: 40, paye: false }] }, 2026), 'a-regler');
+  assert.equal(L.statutAdhesion({ statut: 'resident' }, 2026), 'na'); assert.equal(L.statutAdhesion(null, 2026), 'na');
+  // validation
+  assert.equal(L.erreurAdhesion({ annee: 2026, date: '2026-01-10', montant: 40, paye: false }), '');
+  assert.match(L.erreurAdhesion({ annee: 1999, montant: 1 }), /année/); assert.match(L.erreurAdhesion({ annee: 2026, montant: -3 }), /montant/);
+  assert.match(L.erreurAdhesion({ annee: 2026, montant: 40, paye: true, datePaiement: '' }), /date de règlement/); assert.match(L.erreurAdhesion({ annee: 2026, date: '10/01/2026' }), /illisible/);
+  // renouvellement
+  let r = L.renouveler(vieux, 2027, { auj: AUJ, montant: 40 }); assert.equal(r.adhesions.length, 2); assert.equal(r.adhesions[1].annee, 2027); assert.equal(r.adhesions[1].paye, false); assert.equal(r.adhesions[0].paye, true);
+  assert.match(L.renouveler(vieux, 2026, { auj: AUJ }).erreur, /existe déjà/); assert.match(L.renouveler({ statut: 'resident' }, 2027, { auj: AUJ }).erreur, /adhérent/);
+  // règlement : mode et date ; relance conservée
+  const reg = L.avecAdhesion({ ...vieux, adhesions: r.adhesions }, { annee: 2027, montant: 40, paye: true, mode: 'Chèque', datePaiement: '2027-01-15' });
+  assert.equal(reg.find(a => a.annee === 2027).mode, 'Chèque'); assert.equal(reg.find(a => a.annee === 2027).date, AUJ, 'la date d\'adhésion est conservée');
+  const rel = L.marquerRelance({ ...vieux, adhesions: r.adhesions }, 2027, '2026-12-05'); assert.equal(rel.find(a => a.annee === 2027).relanceLe, '2026-12-05');
+  const rel2 = L.marquerRelance(vieux, 2027, '2026-12-05', 40); assert.equal(rel2.length, 2); assert.equal(rel2[1].paye, false);
+  assert.equal(L.avecAdhesion({ ...vieux, adhesions: reg }, { annee: 2027, montant: 40, paye: false }).find(a => a.annee === 2027).mode, '', 'non réglée : plus de mode ni de date de règlement');
+  // dernière année réglée (requêtes de l'accueil)
+  assert.equal(L.derniereAnneeReglee(vieux), 2026); assert.equal(L.derniereAnneeReglee({ statut: 'adherent' }), 0); assert.equal(L.derniereAnneeReglee({ statut: 'resident' }), 9999);
+  // téléphones et proches (anciens formats)
+  assert.deepEqual(L.telephones(vieux), { fixe: '', portable: '06 11 22 33 44' }); assert.deepEqual(L.telephones({ tel: '03 20 11 22 33' }), { fixe: '03 20 11 22 33', portable: '' });
+  assert.deepEqual(L.telephones({ telFixe: '03', telPortable: '' }), { fixe: '03', portable: '' }); assert.deepEqual(L.telephones({}), { fixe: '', portable: '' });
+  assert.deepEqual(L.prochesDe(vieux), [{ nom: 'Fille : Sophie', lien: '', tel: '03 20 00 00 00' }]);
+  assert.equal(L.prochesDe({ proches: [{ nom: 'A', tel: '1' }, { nom: '', tel: '' }, { nom: 'B' }, { nom: 'C' }, { nom: 'D' }] }).length, 3, '3 proches au plus, lignes vides ignorées');
+  // champs calculés / migration
+  const c = L.completerSenior(vieux);
+  assert.equal(c.adhAnnee, 2026); assert.equal(c.telPortable, '06 11 22 33 44'); assert.equal(c.tel, '06 11 22 33 44'); assert.equal(c.contactNom, 'Fille : Sophie'); assert.equal(c.verifieLe, ''); assert.deepEqual(c.adhesion, { date: '2026-01-10', montant: 40, paye: true });
+  assert.equal(L.besoinMigration(vieux), true); assert.equal(L.besoinMigration(c), false, 'une fiche convertie n\'est plus à migrer'); assert.equal(L.besoinMigration(L.completerSenior({ statut: 'resident', nom: 'X' })), false);
+  assert.equal(L.completerSenior({ statut: 'resident', adhesion: { date: '2026-01-01', paye: true } }).adhesion, null, 'résident·e : pas d\'adhésion');
+  assert.equal(L.completerSenior({ statut: 'resident' }).adhAnnee, 9999);
+  assert.equal(L.completerSenior({ ...c, telFixe: '03 20', telPortable: '' }).tel, '03 20', 'tel (compatibilité) = portable sinon fixe');
+  // la conversion est idempotente
+  assert.deepEqual(L.completerSenior(c), c);
+  // vérification annuelle
+  assert.equal(L.seuilVerification('2026-11-23', 12), '2025-11-23'); assert.equal(L.seuilVerification('2026-03-31', 1), '2026-03-03', 'mois plus court : repli de JS');
+  assert.equal(L.aVerifier({ verifieLe: '' }, AUJ), true); assert.equal(L.aVerifier({}, AUJ), true); assert.equal(L.aVerifier({ verifieLe: '2025-11-22' }, AUJ), true);
+  assert.equal(L.aVerifier({ verifieLe: '2025-11-23' }, AUJ), false); assert.equal(L.aVerifier({ verifieLe: '2026-01-01' }, AUJ, 12), false); assert.equal(L.aVerifier({ verifieLe: '2026-01-01' }, AUJ, 6), true);
+  assert.deepEqual(L.marquerVerifiee({ id: 'x' }, { par: 'Alice', auj: AUJ }), { id: 'x', verifieLe: AUJ, verifiePar: 'Alice' });
+  // alertes
+  assert.equal(L.alertesFiches({}).length, 0);
+  const al = L.alertesFiches({ adh: 2, verif: 1, cible: 2027, mois: 12 }); assert.match(al[0].texte, /2 adhésions à renouveler ou à régler pour 2027/); assert.equal(al[0].tab, 'adhesions'); assert.match(al[1].texte, /1 fiche à vérifier \(non vérifiée depuis plus de 12 mois\)/); assert.ok(al.every(a => a.vue === 'seniors'));
+  assert.ok(L.alertesAccueil({ activites: [], inscriptions: [], seances: [], taches: [], auj: AUJ, fiches: { adh: 3, verif: 0, cible: 2026 } }).some(a => a.tab === 'adhesions'));
+  assert.equal(L.alertesAccueil({ activites: [], inscriptions: [], seances: [], taches: [], auj: AUJ }).length, 0);
+  // message de relance
+  assert.match(L.messageRelance(vieux, 2027, { service: 'Animation', montant: 40 }), /^Bonjour Anne,\n\nil est temps de renouveler votre adhésion pour 2027 \(40 €\)\./);
+  assert.match(L.messageRelance({ statut: 'adherent', prenom: 'Luc' }, 2026, {}), /cotisation 2026 n'est pas encore réglée/);
+  // tableaux
+  const S2 = [c, { id: 'b', statut: 'resident', nom: 'Zed', prenom: 'Z' }, L.completerSenior({ id: 'd', statut: 'adherent', nom: 'Abel', prenom: 'Ben', telPortable: '07 00', email: 'b@x.fr', adhesions: [{ annee: 2026, date: '2026-02-02', montant: 40, paye: false }, { annee: 2025, date: '2025-02-02', montant: 40, paye: true, datePaiement: '2025-02-03', mode: 'Chèque' }] })];
+  const T = L.tableauxAdhesions(S2, 2026); assert.equal(T[0].rows.length, 2, 'seulement les adhérent·es'); assert.equal(T[0].rows[0][0], 'Abel', 'classé par patronyme'); assert.equal(T[0].rows[0][2], 'À régler'); assert.equal(T[1].rows.length, 3);
+  for (const t of T) for (const row of t.rows) assert.equal(row.length, t.cols.length);
+  const V = L.tableauVerification(S2, AUJ, 12, 'Résidence'); assert.equal(V.rows.length, 3); for (const row of V.rows) assert.equal(row.length, V.cols.length);
+  assert.ok(V.rows.some(row => row[3] === 'Résidence'), 'résident·e : lieu de vie');
+  // le test historique (alertes) reste vrai : adhesionAJour sur l'année en cours
+  assert.equal(L.cotisationARegler({ statut: 'adherent', adhesion: { date: `${new Date().getFullYear()}-01-02`, paye: false } }), true);
+  console.log('ok - lot F : adhésions par année, renouvellement, proches, téléphones, vérification, alertes, exports');
+}

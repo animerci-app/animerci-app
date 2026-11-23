@@ -4,7 +4,7 @@
 // l'information est toujours écrite en toutes lettres (« Oui », « Présent·e »…), jamais portée par une couleur.
 import { store, lecturesDuJour, MODE_REEL } from './store.js';
 import { S, $, esc, toast, patienter, confirmer, aujourdhui } from './ui.js';
-import { STATUTS_PRESENCE, lieuDeVie, libelleFrequence, TYPES_ECHANGE, STATUTS_CONVENTION, tableauxMateriel } from './logic.js';
+import { STATUTS_PRESENCE, lieuDeVie, libelleFrequence, TYPES_ECHANGE, STATUTS_CONVENTION, tableauxMateriel, telephones, prochesDe, tableauxAdhesions } from './logic.js';
 import { VERSION } from './version.js';
 import { P } from './parametres.js';
 
@@ -37,10 +37,11 @@ export function tableaux({ fiches = false } = {}) {
   const nomSen = id => { const s = C.seniors.find(x => x.id === id); return s ? `${s.nom} ${s.prenom}` : '(personne supprimée)'; };
   const T = [];
   T.push({ nom: 'Personnes', titre: 'Personnes (adhérents, résidents, autres publics)',
-    cols: ['Nom', 'Nom de jeune fille', 'Prénom', 'Naissance', 'Sexe', 'Statut', 'Lieu de vie', 'Appartement', 'Adresse', 'Commune', 'Téléphone', 'Personne à prévenir', 'Tél. de cette personne', 'Date d\'adhésion', 'Montant (€)', 'Cotisation réglée', 'Portage de repas'],
+    cols: ['Nom', 'Nom de jeune fille', 'Prénom', 'Naissance', 'Sexe', 'Statut', 'Lieu de vie', 'Appartement', 'Adresse', 'Commune', 'Tél. fixe', 'Tél. portable', 'E-mail', 'Quartier ou secteur', 'Date d\'entrée', 'Proches (nom, lien, tél.)', 'Informations d\'organisation', 'Dernière vérification', 'Date d\'adhésion', 'Montant (€)', 'Cotisation réglée', 'Portage de repas'],
     rows: [...C.seniors].sort((a, b) => (a.nom + a.prenom).localeCompare(b.nom + b.prenom, 'fr')).map(s => [s.nom, s.nomNaissance, s.prenom, fr(s.naissance), s.sexe === 'H' ? 'Homme' : s.sexe === 'F' ? 'Femme' : 'Non précisé',
-      { adherent: 'Adhérent·e', resident: 'Résident·e', autre: 'Autre public' }[s.statut] || s.statut, lieuDeVie(s, P('residence.nom')), s.appartement, s.adresse, s.commune, s.tel, s.contactNom, s.contactTel,
+      { adherent: 'Adhérent·e', resident: 'Résident·e', autre: 'Autre public' }[s.statut] || s.statut, lieuDeVie(s, P('residence.nom')), s.appartement, s.adresse, s.commune, telephones(s).fixe, telephones(s).portable, s.email, s.quartier, fr(s.entreeLe), prochesDe(s).map(p => [p.nom, p.lien, p.tel].filter(Boolean).join(', ')).join(' ; '), s.infosOrga, fr(s.verifieLe),
       s.adhesion ? fr(s.adhesion.date) : s.statut === 'resident' ? 'Comprise dans le loyer' : '', s.adhesion ? s.adhesion.montant : '', s.adhesion ? oui(s.adhesion.paye) : '', s.portage ? libelleFrequence(s.portage) : ''] ) });
+  T.push(tableauxAdhesions(C.seniors, new Date().getFullYear())[1]); // historique des adhésions par année
   T.push({ nom: 'Activités', titre: 'Activités, sorties et événements',
     cols: ['Activité', 'Type', 'Catégorie', 'Date', 'Jour et horaire', 'Fréquence', 'Lieu', 'Places', 'Intervenant·e', 'Partenaire', 'Bénévole référent·e', 'Budget'],
     rows: [...C.activites].sort((a, b) => (a.date || '').localeCompare(b.date || '')).map(a => [a.nom, TYPES[a.type] || a.type, a.cat, fr(a.date), a.jour, a.frequence, a.lieu, a.cap, a.interv, a.partenaire, a.benevole, a.budget]) });

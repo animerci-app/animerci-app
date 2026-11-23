@@ -105,8 +105,8 @@ export function statistiques(seances, seniors, activites, { du = null, au = null
 /** Adhésion à jour ? Une adhésion couvre l'année civile de sa date. */
 export function adhesionAJour(senior, annee = new Date().getFullYear()) {
   if (senior.statut === 'resident' || senior.statut === 'autre') return true; // résident·e : comprise dans le loyer ; autre public : pas de cotisation
-  const a = senior.adhesion;
-  return !!(a && a.date && new Date(a.date).getFullYear() === annee && a.paye);
+  const a = adhesionsDe(senior).find(x => x.annee === annee);
+  return !!(a && a.paye);
 }
 
 /** Libellé du statut d'une personne. */
@@ -363,7 +363,7 @@ export function programme(activites, du, au) {
   return { mois, regulieres };
 }
 // Alertes de l'accueil, calculées sur les données déjà chargées (aucune lecture en plus)
-export function alertesAccueil({ activites, inscriptions, seances, taches, auj, echanges = [], conventions = [], joursConv = 30, materiel = [], emprunts = [], joursPeremption = 30 }) {
+export function alertesAccueil({ activites, inscriptions, seances, taches, auj, echanges = [], conventions = [], joursConv = 30, materiel = [], emprunts = [], joursPeremption = 30, fiches = null }) {
   const A = [], nomAct = id => (activites.find(a => a.id === id) || {}).nom;
   const ouvertes = taches.filter(t => !t.done);
   const retard = ouvertes.filter(t => t.echeance && t.echeance < auj).sort((x, y) => x.echeance.localeCompare(y.echeance));
@@ -376,6 +376,7 @@ export function alertesAccueil({ activites, inscriptions, seances, taches, auj, 
   for (const [id, n] of Object.entries(val)) if (nomAct(id)) A.push({ niveau: 'info', texte: `${n} appel${n > 1 ? 's' : ''} à valider : ${nomAct(id)}`, act: id });
   A.push(...alertesPartenaires({ echanges, conventions, auj, joursConv }));
   A.push(...alertesMateriel({ materiel, emprunts, auj, joursPeremption }));
+  if (fiches) A.push(...alertesFiches(fiches));
   return A;
 }
 
@@ -658,4 +659,127 @@ export function tableauxMateriel({ materiel = [], emprunts = [], mouvements = []
       cols: ['Date', 'Article', 'Sens', 'Quantité', 'Lot', 'Motif', 'Précision', 'Stock après', 'Saisi par'],
       rows: [...mouvements].sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.creeLe || '').localeCompare(a.creeLe || '')).map(v => [fmtDate(v.date), v.materielNom, v.sens === 'entree' ? 'Entrée' : 'Sortie', Number(v.quantite) || 0, v.lot || '', v.motif || '', v.note || '', v.apres == null ? '' : v.apres, v.par || '']) }
   ];
+}
+
+
+/* ---------- Lot F (v1.18.0) : fiches enrichies, adhésions par année, campagne annuelle de vérification ---------- */
+// Une adhésion couvre l'ANNÉE CIVILE (décision du 23/11/2026). Les anciennes fiches (champ `adhesion` unique, `tel`, `contactNom`/`contactTel`) restent lisibles :
+// elles sont converties à la volée par adhesionsDe / telephones / prochesDe, puis réécrites au nouveau format par completerSenior (migration à l'ouverture de « Personnes »).
+const EST_DATE = d => /^\d{4}-\d{2}-\d{2}$/.test(d || '');
+export const MAX_PROCHES = 3;
+/** Année visée par les relances : l'année suivante à partir du 1er du mois de début (décembre par défaut), sinon l'année en cours. */
+export function anneeCible(auj, moisDebut = 12) {
+  const a = Number(String(auj).slice(0, 4)), m = Number(String(auj).slice(5, 7));
+  return m >= moisDebut ? a + 1 : a;
+}
+/** Adhésions d'une personne, une par année, de la plus ancienne à la plus récente (ancien champ `adhesion` converti). */
+export function adhesionsDe(s) {
+  if (!s) return [];
+  let l = Array.isArray(s.adhesions) ? s.adhesions : (s.adhesion && s.adhesion.date ? [{ annee: Number(String(s.adhesion.date).slice(0, 4)), date: s.adhesion.date, montant: s.adhesion.montant, paye: !!s.adhesion.paye }] : []);
+  const par = new Map();
+  for (const a of l) { if (!a || !Number.isFinite(Number(a.annee))) continue; par.set(Number(a.annee), { annee: Number(a.annee), date: a.date || '', montant: a.montant == null || a.montant === '' ? 0 : Number(a.montant), paye: !!a.paye, mode: a.mode || '', datePaiement: a.datePaiement || (a.paye ? a.date || '' : ''), relanceLe: a.relanceLe || '' }); }
+  return [...par.values()].sort((x, y) => x.annee - y.annee);
+}
+/** Situation de l'adhésion pour une année : 'na' (ni cotisation ni suivi), 'reglee', 'a-regler' (saisie mais non réglée, ou jamais réglée), 'a-renouveler' (réglée une année précédente, rien pour l'année). */
+export function statutAdhesion(s, annee) {
+  if (!s || s.statut !== 'adherent') return 'na';
+  const l = adhesionsDe(s), a = l.find(x => x.annee === annee);
+  if (a) return a.paye ? 'reglee' : 'a-regler';
+  return l.some(x => x.annee < annee && x.paye) ? 'a-renouveler' : 'a-regler';
+}
+export const LIBELLES_ADHESION = { reglee: 'Réglée', 'a-regler': 'À régler', 'a-renouveler': 'À renouveler', na: '' };
+/** Message d'erreur (ou '') pour une adhésion à enregistrer. */
+export function erreurAdhesion(a) {
+  if (!Number.isInteger(Number(a.annee)) || a.annee < 2000 || a.annee > 2100) return 'Indiquez l\'année de l\'adhésion.';
+  if (a.date && !EST_DATE(a.date)) return 'La date d\'adhésion est illisible.';
+  const m = a.montant === '' || a.montant == null ? 0 : Number(a.montant);
+  if (!Number.isFinite(m) || m < 0) return 'Le montant doit être un nombre positif ou nul.';
+  if (a.datePaiement && !EST_DATE(a.datePaiement)) return 'La date de règlement est illisible.';
+  if (a.paye && !a.datePaiement) return 'Indiquez la date de règlement.';
+  return '';
+}
+/** Ajoute (ou remplace) l'adhésion d'une année ; renvoie la nouvelle liste triée. */
+export function avecAdhesion(s, adh) {
+  const l = adhesionsDe(s).filter(x => x.annee !== Number(adh.annee));
+  const ancien = adhesionsDe(s).find(x => x.annee === Number(adh.annee)) || {};
+  l.push({ annee: Number(adh.annee), date: adh.date || ancien.date || '', montant: adh.montant === '' || adh.montant == null ? 0 : Number(adh.montant), paye: !!adh.paye, mode: adh.paye ? (adh.mode || '') : '', datePaiement: adh.paye ? (adh.datePaiement || '') : '', relanceLe: adh.relanceLe != null ? adh.relanceLe : (ancien.relanceLe || '') });
+  return l.sort((x, y) => x.annee - y.annee);
+}
+/** Renouvellement : crée l'adhésion de l'année (non réglée, montant proposé). Erreur si elle existe déjà ou si la personne n'est pas adhérente. */
+export function renouveler(s, annee, { auj, montant = 0 } = {}) {
+  if (!s || s.statut !== 'adherent') return { erreur: 'Seul·e un·e adhérent·e se renouvelle.' };
+  if (adhesionsDe(s).some(x => x.annee === annee)) return { erreur: `L'adhésion ${annee} existe déjà.` };
+  return { adhesions: avecAdhesion(s, { annee, date: auj, montant, paye: false }) };
+}
+/** Marque une relance (date) sur l'adhésion de l'année, qu'elle existe ou non. */
+export function marquerRelance(s, annee, auj, montant = 0) {
+  const a = adhesionsDe(s).find(x => x.annee === annee);
+  return avecAdhesion(s, a ? { ...a, relanceLe: auj } : { annee, date: '', montant, paye: false, relanceLe: auj });
+}
+/** Dernière année réglée (0 si aucune) pour les adhérent·es ; 9999 pour les autres (« sans objet » : jamais retenus par la requête `adhAnnee < année cible`, null étant traité différemment selon les bases). */
+export const SANS_ADHESION = 9999;
+export const derniereAnneeReglee = s => (s && s.statut === 'adherent' ? adhesionsDe(s).filter(a => a.paye).reduce((m, a) => Math.max(m, a.annee), 0) : SANS_ADHESION);
+/** Téléphones : fixe et portable (une ancienne fiche n'a qu'un `tel` : 06 / 07 → portable, sinon fixe). */
+export function telephones(s) {
+  if (!s) return { fixe: '', portable: '' };
+  if (s.telFixe !== undefined || s.telPortable !== undefined) return { fixe: s.telFixe || '', portable: s.telPortable || '' };
+  const t = String(s.tel || '').trim(); if (!t) return { fixe: '', portable: '' };
+  return /^(\+33|0033|0)[67]/.test(t.replace(/[\s.\-]/g, '')) ? { fixe: '', portable: t } : { fixe: t, portable: '' };
+}
+/** Proches (3 au plus) : nom, lien, téléphone. Une ancienne fiche (contactNom / contactTel) devient le premier proche. */
+export function prochesDe(s) {
+  if (!s) return [];
+  const l = Array.isArray(s.proches) ? s.proches : (s.contactNom || s.contactTel ? [{ nom: s.contactNom || '', lien: '', tel: s.contactTel || '' }] : []);
+  return l.map(p => ({ nom: String(p.nom || '').trim(), lien: String(p.lien || '').trim(), tel: String(p.tel || '').trim() })).filter(p => p.nom || p.tel).slice(0, MAX_PROCHES);
+}
+/** Champs recopiés ou calculés à enregistrer avec la fiche : adhésions normalisées, ancien champ `adhesion` (année la plus récente), `adhAnnee` (requêtes de l'accueil), téléphones, proches, `verifieLe`. */
+export function champsCalcules(s) {
+  const adh = adhesionsDe(s), tel = telephones(s), pro = prochesDe(s), dern = adh.length ? adh[adh.length - 1] : null;
+  return {
+    adhesions: adh, adhesion: s.statut === 'adherent' && dern ? { date: dern.date, montant: dern.montant, paye: dern.paye } : null, adhAnnee: derniereAnneeReglee(s),
+    telFixe: tel.fixe, telPortable: tel.portable, tel: tel.portable || tel.fixe, proches: pro, contactNom: pro[0] ? pro[0].nom : '', contactTel: pro[0] ? pro[0].tel : '',
+    verifieLe: s.verifieLe || ''
+  };
+}
+export const completerSenior = s => ({ ...s, ...champsCalcules(s) });
+/** Fiche à convertir au nouveau format (migration à l'ouverture de « Personnes ») ? */
+export const besoinMigration = s => !!s && (s.verifieLe === undefined || s.proches === undefined || s.telFixe === undefined || !Array.isArray(s.adhesions) || s.adhAnnee === undefined);
+/** Date limite : une fiche vérifiée avant cette date (ou jamais) est « à vérifier ». */
+export function seuilVerification(auj, mois = 12) { const d = new Date(auj + 'T12:00:00'); d.setMonth(d.getMonth() - mois); return d.toISOString().slice(0, 10); }
+export const aVerifier = (s, auj, mois = 12) => !s.verifieLe || s.verifieLe < seuilVerification(auj, mois);
+/** Marque la fiche comme vérifiée. */
+export const marquerVerifiee = (s, { par, auj }) => ({ id: s.id, verifieLe: auj, verifiePar: par || '' });
+/** Alertes de l'accueil (compteurs lus côté serveur : aucune fiche téléchargée). */
+export function alertesFiches({ adh = 0, verif = 0, cible, mois = 12 } = {}) {
+  const A = [];
+  if (adh > 0) A.push({ niveau: 'warn', texte: `${adh} adhésion${adh > 1 ? 's' : ''} à renouveler ou à régler pour ${cible}`, vue: 'seniors', tab: 'adhesions' });
+  if (verif > 0) A.push({ niveau: 'info', texte: `${verif} fiche${verif > 1 ? 's' : ''} à vérifier (non vérifiée${verif > 1 ? 's' : ''} depuis plus de ${mois} mois)`, vue: 'seniors', tab: 'verification' });
+  return A;
+}
+/** Message de relance à copier (rien n'est envoyé). */
+export function messageRelance(s, annee, { service = '', montant = 0 } = {}) {
+  const st = statutAdhesion(s, annee), prenom = s.prenom || '';
+  const m = montant ? ` (${montant} €)` : '';
+  const corps = st === 'a-regler' ? `votre cotisation ${annee}${m} n'est pas encore réglée.` : `il est temps de renouveler votre adhésion pour ${annee}${m}.`;
+  return `Bonjour ${prenom},\n\n${corps} Vous pouvez la régler auprès du service${service ? ' ' + service : ''}.\n\nMerci et à bientôt !`;
+}
+/** Tableaux d'export des adhésions d'une année et de l'historique (une ligne par personne et par année). */
+export function tableauxAdhesions(seniors, annee) {
+  const adh = seniors.filter(s => s.statut === 'adherent').sort(comparerPatronyme);
+  const lib = a => (a ? (a.paye ? 'Réglée' : 'À régler') : '');
+  return [
+    { nom: `Adhésions ${annee}`, titre: `Adhésions de l'année ${annee}`, cols: ['Nom', 'Prénom', 'Situation', 'Montant (€)', 'Date d\'adhésion', 'Réglée le', 'Mode de règlement', 'Relancé le', 'Téléphone', 'E-mail'],
+      rows: adh.map(s => { const a = adhesionsDe(s).find(x => x.annee === annee), t = telephones(s); return [s.nom, s.prenom, LIBELLES_ADHESION[statutAdhesion(s, annee)], a ? a.montant : '', a ? fmtDate(a.date) : '', a && a.paye ? fmtDate(a.datePaiement) : '', a ? a.mode : '', a && a.relanceLe ? fmtDate(a.relanceLe) : '', t.portable || t.fixe, s.email || '']; }) },
+    { nom: 'Historique des adhésions', titre: 'Historique des adhésions par année',
+      cols: ['Nom', 'Prénom', 'Année', 'Montant (€)', 'Date d\'adhésion', 'Situation', 'Réglée le', 'Mode de règlement'],
+      rows: adh.flatMap(s => adhesionsDe(s).map(a => [s.nom, s.prenom, a.annee, a.montant, fmtDate(a.date), lib(a), a.paye ? fmtDate(a.datePaiement) : '', a.mode])) }
+  ];
+}
+/** Liste imprimable de la campagne de vérification (à faire relire par chaque personne). */
+export function tableauVerification(seniors, auj, mois = 12, residence = '') {
+  const l = seniors.filter(s => aVerifier(s, auj, mois)).sort(comparerPatronyme);
+  return { nom: 'Fiches à vérifier', titre: `Fiches à vérifier au ${fmtDate(auj)}`,
+    cols: ['Nom', 'Prénom', 'Naissance', 'Adresse ou lieu de vie', 'Commune', 'Tél. fixe', 'Tél. portable', 'E-mail', 'Proches (nom, lien, tél.)', 'Adhésion ' + auj.slice(0, 4), 'Dernière vérification', 'Vérifié'],
+    rows: l.map(s => { const t = telephones(s); return [s.nom, s.prenom, fmtDate(s.naissance), s.statut === 'resident' ? (residence ? residence + (s.appartement ? ', appt ' + s.appartement : '') : 'Résidence') : s.adresse || '', s.statut === 'resident' ? '' : s.commune || '', t.fixe, t.portable, s.email || '',
+      prochesDe(s).map(p => [p.nom, p.lien, p.tel].filter(Boolean).join(', ')).join(' ; '), s.statut === 'adherent' ? LIBELLES_ADHESION[statutAdhesion(s, Number(auj.slice(0, 4)))] : '—', s.verifieLe ? fmtDate(s.verifieLe) : 'Jamais', '☐']; }) };
 }

@@ -1,7 +1,7 @@
 // Lecture de listes (CSV, Excel .xlsx) et préparation de l'import — logique pure, sans écran (testable).
 // Rien n'est codé en dur : ni noms ni listes ; seulement des synonymes de titres de colonnes pour reconnaître un tableau.
 import { deduireSexe } from './prenoms.js';
-import { cleNom, lireDate, separerNom, homonymes, nomComplet, normContact, lireFrequence, memeAdresse } from './logic.js';
+import { champsCalcules, cleNom, lireDate, separerNom, homonymes, nomComplet, normContact, lireFrequence, memeAdresse } from './logic.js';
 
 /* ---------- Lecture des fichiers ---------- */
 const decoder = (buf) => { try { return new TextDecoder('utf-8', { fatal: true }).decode(buf); } catch { return new TextDecoder('windows-1252').decode(buf); } };   // CSV d'Excel français : souvent Windows-1252
@@ -133,7 +133,7 @@ export function proche(a, b) {
 
 /* ---------- Reconnaissance des colonnes ---------- */
 export const CHAMPS = {
-  seniors: [['', '— ignorer cette colonne —'], ['complet', 'Nom complet (Prénom Nom)'], ['nom', 'Nom'], ['prenom', 'Prénom'], ['nomNaissance', 'Nom de jeune fille'], ['naissance', 'Date de naissance'], ['sexe', 'Sexe'], ['statut', 'Statut'], ['adresse', 'Adresse'], ['commune', 'Commune'], ['tel', 'Téléphone'], ['contactNom', 'Personne à prévenir'], ['contactTel', 'Téléphone de cette personne'], ['aConfirmer', 'Prénom à confirmer'], ['frequence', 'Portage de repas : fréquence'], ['appartement', 'Appartement (résidents)']],
+  seniors: [['', '— ignorer cette colonne —'], ['complet', 'Nom complet (Prénom Nom)'], ['nom', 'Nom'], ['prenom', 'Prénom'], ['nomNaissance', 'Nom de jeune fille'], ['naissance', 'Date de naissance'], ['sexe', 'Sexe'], ['statut', 'Statut'], ['adresse', 'Adresse'], ['commune', 'Commune'], ['tel', 'Téléphone'], ['telFixe', 'Téléphone fixe'], ['telPortable', 'Téléphone portable'], ['email', 'E-mail'], ['contactNom', 'Personne à prévenir'], ['contactTel', 'Téléphone de cette personne'], ['aConfirmer', 'Prénom à confirmer'], ['frequence', 'Portage de repas : fréquence'], ['appartement', 'Appartement (résidents)']],
   activites: [['', '— ignorer cette colonne —'], ['nom', 'Nom de l\'activité'], ['type', 'Type (activité, sortie, événement)'], ['categorie', 'Catégorie'], ['jour', 'Jour et horaire'], ['frequence', 'Fréquence'], ['lieu', 'Lieu'], ['cap', 'Nombre de places']],
   contacts: [['', '— ignorer cette colonne —'], ['complet', 'Nom complet (Prénom Nom)'], ['nom', 'Nom'], ['prenom', 'Prénom'], ['precision', 'Métier, activité ou organisme'], ['categorie', 'Catégorie'], ['tel', 'Téléphone'], ['email', 'E-mail'], ['note', 'Remarque']]
 };
@@ -153,6 +153,8 @@ const SYNONYMES = {
   statut: ['statut'],
   adresse: ['adresse', 'adresse postale', 'domicile'],
   commune: ['commune', 'ville', 'localite', 'code postal et ville'],
+  telFixe: ['telephone fixe', 'tel fixe', 'fixe'],
+  telPortable: ['telephone portable', 'tel portable', 'portable', 'mobile', 'telephone mobile', 'tel mobile', 'gsm'],
   tel: ['telephone', 'tel', 'portable', 'mobile', 'numero de telephone', 'telephone fixe'],
   contactNom: ['personne a prevenir', 'contact', 'personne a contacter', 'en cas d urgence'],
   contactTel: ['telephone de cette personne', 'tel de cette personne', 'telephone personne a prevenir', 'tel contact', 'telephone contact'],
@@ -199,7 +201,7 @@ export function preparerSeniors(lignes, colonnes, existants, defauts) {
     const jn = colonnes.indexOf('naissance'), nb = jn < 0 ? '' : l[jn], naissance = lireDate(nb);
     if (nb !== '' && nb != null && !naissance) aVerifier.push({ n: k + 1, raison: `date de naissance illisible (« ${nb} »), importée sans date` });
     const doc = { nom, prenom, nomNaissance: g('nomNaissance'), naissance, sexe: sexeDe(g('sexe'), '') || deduireSexe(prenom) || defauts.sexe || '', statut: statutDe(g('statut'), defauts.statut),
-      ...(g('appartement') ? { appartement: g('appartement') } : {}), adresse: g('adresse'), commune: doc0commune(g('commune'), g('statut'), defauts), tel: g('tel'), contactNom: g('contactNom'), contactTel: g('contactTel'),
+      ...(g('appartement') ? { appartement: g('appartement') } : {}), adresse: g('adresse'), commune: doc0commune(g('commune'), g('statut'), defauts), tel: g('tel'), ...(g('telFixe') ? { telFixe: g('telFixe') } : {}), ...(g('telPortable') ? { telPortable: g('telPortable') } : {}), ...(g('email') ? { email: g('email') } : {}), contactNom: g('contactNom'), contactTel: g('contactTel'),
       ...(/^(oui|x|1|vrai)$/i.test(g('aConfirmer')) ? { prenomAConfirmer: true } : {}) };
     if (!doc.sexe) aVerifier.push({ n: k + 1, raison: `sexe non déterminé (${doc.prenom}) : « non précisé », à compléter sur la fiche si besoin` });
     if (doc.prenomAConfirmer) aVerifier.push({ n: k + 1, raison: `prénom à confirmer (${doc.prenom}) : marqué sur la fiche` });
@@ -216,6 +218,7 @@ export function preparerSeniors(lignes, colonnes, existants, defauts) {
       else if (doc.portage.precision) aVerifier.push({ n: k + 1, raison: `fréquence de portage « ${fr} » : jours reconnus, texte conservé en précision` });
     }
     doc.adhesion = doc.statut !== 'adherent' ? null : { ...defauts.adhesion };
+    Object.assign(doc, champsCalcules(doc)); // nouveau format : adhésions par année, téléphones, proches, vérification
     const hom = homonymes(doc, tous);
     // même personne : même date de naissance ; ou, sans date ni d'un côté ni de l'autre, même nom de jeune fille (re-import du même fichier)
     const memePers = hom.find(x => x.naissance && naissance ? x.naissance === naissance : !x.naissance && !naissance && cleNom(x.nomNaissance) === cleNom(doc.nomNaissance));

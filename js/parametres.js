@@ -39,13 +39,14 @@ export const DEFAUTS = {
   // Lieux de vie : le nom de la résidence (pour les résident·es) et la commune proposée à l'inscription d'un·e adhérent·e
   residence: { nom: '', adresse: '' },
   commune: { defaut: '' },
-  adhesion: { montantDefaut: 40 },
+  adhesion: { montantDefaut: 40, relanceMois: 12, modes: ['Espèces', 'Chèque', 'Virement', 'Autre'] },
+  verification: { mois: 12 },
   securite: { joursCorbeille: 30, joursJournal: 365, rappelSauvegardeJours: 30, motDePasseMin: 12, horizonEmargementJours: 14 },
   // Modules facultatifs (le planning, les activités et les personnes sont toujours actifs)
   modules: { taches: true, bilans: true }
 };
 // Bornes acceptées pour les nombres (une valeur hors bornes est ignorée au profit de la valeur par défaut)
-const BORNES = { 'adhesion.montantDefaut': [0, 1000], 'securite.joursCorbeille': [1, 365], 'securite.joursJournal': [30, 1095], 'securite.rappelSauvegardeJours': [1, 365], 'securite.motDePasseMin': [8, 64], 'securite.horizonEmargementJours': [1, 90], 'partenaires.alerteJours': [1, 365], 'materiel.alertePeremptionJours': [1, 365] };
+const BORNES = { 'adhesion.montantDefaut': [0, 1000], 'adhesion.relanceMois': [1, 12], 'verification.mois': [1, 36], 'securite.joursCorbeille': [1, 365], 'securite.joursJournal': [30, 1095], 'securite.rappelSauvegardeJours': [1, 365], 'securite.motDePasseMin': [8, 64], 'securite.horizonEmargementJours': [1, 90], 'partenaires.alerteJours': [1, 365], 'materiel.alertePeremptionJours': [1, 365] };
 
 const lire = (obj, chemin) => chemin.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
 export function P(chemin) {
@@ -94,8 +95,11 @@ export function parametres() {
     ${liste('p-mun', 'materiel.unites', 'Unités des réserves', 'Une par ligne (kg, L, boîte(s)…).')}
     <div class="two">${num('p-mpe', 'materiel.alertePeremptionJours', 'Alerte « péremption proche » (jours avant la date)')}</div>
     <p class="sub" style="margin:0">✔ <b>À écrire</b> : des noms d'objets et de lieux de rangement. ✘ <b>À ne pas écrire</b> : toute information de santé. Les états du matériel (bon état, usé, à réparer, manquant, hors d'usage) ne se modifient pas : les alertes en dépendent.</p></div>
-  <div class="card" style="margin-bottom:14px"><h2 style="margin-top:0">Adhésion et sécurité</h2><div class="two">
+  <div class="card" style="margin-bottom:14px"><h2 style="margin-top:0">Adhésion, vérification des fiches et sécurité</h2>
+    ${liste('p-mdr', 'adhesion.modes', 'Modes de règlement de la cotisation', 'Une par ligne (espèces, chèque, virement…).')}<div class="two">
     ${num('p-cot', 'adhesion.montantDefaut', 'Montant de la cotisation proposé (€)')}
+    ${num('p-rel', 'adhesion.relanceMois', 'Début des relances de renouvellement (mois, 1 à 12)', 'À partir du 1er de ce mois, l\'accueil signale les adhésions à renouveler pour l\'année suivante. 12 = décembre. Une adhésion couvre l\'année civile.')}
+    ${num('p-ver', 'verification.mois', 'Vérification des fiches après (mois)', 'Une fiche non vérifiée depuis ce délai apparaît dans « Personnes » → Vérification.')}
     ${num('p-pw', 'securite.motDePasseMin', 'Longueur minimale du mot de passe', 'Au moins 8. Une personne dont le mot de passe est plus court est invitée à le changer à la connexion.')}
     ${num('p-corb', 'securite.joursCorbeille', 'Durée de la corbeille (jours)')}
     ${num('p-jour', 'securite.joursJournal', 'Durée de conservation du journal (jours)')}
@@ -112,15 +116,16 @@ export const actions = {
   'param-save': async () => {
     if (!peutAdmin()) return;
     const cats = lignes('#p-cats'), bud = lignes('#p-bud'), mob = lignes('#p-mob'), ann = lignes('#p-ann'), psv = lignes('#p-psv'), pty = lignes('#p-pty');
-    const mca = lignes('#p-mca'), mcr = lignes('#p-mcr'), mem = lignes('#p-mem'), msa = lignes('#p-msa'), mun = lignes('#p-mun');
-    if (!cats.length || !bud.length || !mob.length || !ann.length || !psv.length || !pty.length || !mca.length || !mcr.length || !mem.length || !msa.length || !mun.length) return toast('Chaque liste doit contenir au moins un choix.');
+    const mdr = lignes('#p-mdr'), mca = lignes('#p-mca'), mcr = lignes('#p-mcr'), mem = lignes('#p-mem'), msa = lignes('#p-msa'), mun = lignes('#p-mun');
+    if (!cats.length || !bud.length || !mob.length || !ann.length || !psv.length || !pty.length || !mca.length || !mcr.length || !mem.length || !msa.length || !mun.length || !mdr.length) return toast('Chaque liste doit contenir au moins un choix.');
     await sauver('parametres', {
       id: 'general', nomOutil: $('#p-nom').value.trim() || DEFAUTS.nomOutil, nomService: $('#p-svc').value.trim() || DEFAUTS.nomService,
       affiche: { lieu: $('#p-aff-l').value.trim(), pied: $('#p-aff-p').value.trim() || DEFAUTS.affiche.pied },
       residence: { nom: $('#p-res').value.trim(), adresse: $('#p-resadr').value.trim() }, commune: { defaut: $('#p-com').value.trim() },
       listes: { categories: cats, budgets: bud, mobilites: mob },
       annuaire: { categories: ann, rubriques: Object.fromEntries(Object.keys(RUBR_LABELS).map(k => [k, ann.includes($('#p-r-' + k).value) ? $('#p-r-' + k).value : ann[0]])) },
-      adhesion: { montantDefaut: val('#p-cot', 'adhesion.montantDefaut') },
+      adhesion: { montantDefaut: val('#p-cot', 'adhesion.montantDefaut'), relanceMois: val('#p-rel', 'adhesion.relanceMois'), modes: mdr },
+      verification: { mois: val('#p-ver', 'verification.mois') },
       partenaires: { services: psv, types: pty, reunionMensuelle: $('#p-reu').value.trim() || DEFAUTS.partenaires.reunionMensuelle, alerteJours: val('#p-pal', 'partenaires.alerteJours') },
       materiel: { categories: mca, categoriesReserves: mcr, emplacements: mem, saisons: msa, unites: mun, alertePeremptionJours: val('#p-mpe', 'materiel.alertePeremptionJours') },
       securite: { motDePasseMin: val('#p-pw', 'securite.motDePasseMin'), joursCorbeille: val('#p-corb', 'securite.joursCorbeille'), joursJournal: val('#p-jour', 'securite.joursJournal'), rappelSauvegardeJours: val('#p-rap', 'securite.rappelSauvegardeJours'), horizonEmargementJours: val('#p-hor', 'securite.horizonEmargementJours') },

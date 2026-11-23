@@ -22,8 +22,12 @@ export function fusionForm(idGarde) {
 export async function fusionner(A, B) {
   // 1. informations manquantes
   const doc = { id: A.id };
-  for (const k of ['prenom', 'nom', 'nomNaissance', 'naissance', 'sexe', 'appartement', 'adresse', 'commune', 'tel', 'contactNom', 'contactTel']) if (!A[k] && B[k]) doc[k] = B[k];
-  if (!A.adhesion && B.adhesion && A.statut !== 'resident') doc.adhesion = B.adhesion;
+  for (const k of ['prenom', 'nom', 'nomNaissance', 'naissance', 'sexe', 'appartement', 'adresse', 'commune', 'email', 'quartier', 'entreeLe', 'infosOrga']) if (!A[k] && B[k]) doc[k] = B[k];
+  // téléphones, proches et adhésions : fusionnés au nouveau format (les années déjà réglées chez A sont conservées, celles de B complètent)
+  const { telephones, prochesDe, adhesionsDe, champsCalcules, MAX_PROCHES } = L, tA = telephones(A), tB = telephones(B), pA = prochesDe(A), pB = prochesDe(B);
+  const fusion = { telFixe: tA.fixe || tB.fixe, telPortable: tA.portable || tB.portable, proches: [...pA, ...pB.filter(p => !pA.some(q => q.nom === p.nom && q.tel === p.tel))].slice(0, MAX_PROCHES) };
+  if (A.statut !== 'resident') { const m = new Map(adhesionsDe(B).map(a => [a.annee, a])); for (const a of adhesionsDe(A)) m.set(a.annee, a.paye || !m.get(a.annee) || !m.get(a.annee).paye ? a : m.get(a.annee)); fusion.adhesions = [...m.values()].sort((x, y) => x.annee - y.annee); }
+  Object.assign(doc, champsCalcules({ ...A, ...doc, ...fusion }));
   if (!A.portage && B.portage) doc.portage = B.portage;
   if (Object.keys(doc).length > 1) await store.save('seniors', doc);
   const reste = S.cache.seniors.filter(s => s.id !== B.id), Aap = { ...A, ...doc };

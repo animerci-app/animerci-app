@@ -1,5 +1,5 @@
 // Données FICTIVES pour le mode démonstration. Aucune personne réelle.
-import { uid } from './logic.js';
+import { uid, completerSenior } from './logic.js';
 
 const iso = d => d.toISOString().slice(0, 10);
 const plusJours = n => { const d = new Date(); d.setDate(d.getDate() + n); return iso(d); };
@@ -23,7 +23,7 @@ export function donneesDemo() {
     adresse: statut === 'resident' ? '' : `${10 + i} rue des Tilleuls`, commune: statut === 'resident' ? '' : (i % 5 === 4 ? 'Commune voisine' : 'Ville démo'), tel: `06 00 00 00 ${String(i + 10).padStart(2, '0')}`,
     contactNom: i % 3 === 0 ? 'Fille : Sophie' : '', contactTel: i % 3 === 0 ? '06 00 00 99 99' : '',
     adhesion: statut === 'resident' ? null : { date: `${new Date().getFullYear()}-01-${String(5 + (i % 20)).padStart(2, '0')}`, montant: 40, paye: i % 7 !== 0 }
-  }));
+  })).map(s => completerSenior({ ...s, email: s.id === 's1' ? 'exemple@exemple.fr' : '', verifieLe: parseInt(s.id.slice(1), 10) % 4 === 0 ? '' : '2026-06-15' }));
 
   const activites = [
     { id: 'a-flo', nom: 'Atelier floral de Noël', cat: 'Créatif', type: 'activite', jour: 'Mer. · 14h30', lieu: 'Salle des fêtes', cap: 8, budget: 'Budget ville', interv: 'Fleuriste', date: plusJours(7) },

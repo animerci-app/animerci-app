@@ -8,7 +8,7 @@ export const S = {
   view: 'home', actId: null, tab: 'inscriptions',
   rules: { moins: true, abs: true, res: false },
   moisPlan: null, nbMois: 1, appel: null, filtreTache: 'Toutes', filtreStatutTache: 'tous', recherche: '', filtreStatut: 'tous', filtreContact: 'Tous',
-  stat: { du: '', au: '' }, erreur: '', mdpLongueur: 0, navId: 0, compteurs: {}, compteursNav: -1, pret: new Set()
+  stat: { du: '', au: '' }, erreur: '', mdpLongueur: 0, navId: 0, compteurs: {}, compteursNav: -1, compteursFiches: null, compteursFichesNav: -1, ongletSen: 'liste', anAdh: 0, fAdh: 'encours', rechAdh: '', migrationFaite: false, pret: new Set()
 };
 
 // Les données d'un écran sont-elles arrivées ? (évite d'afficher « Aucune personne » pendant le chargement)
