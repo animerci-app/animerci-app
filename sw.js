@@ -2,7 +2,7 @@
 // IMPORTANT (confidentialité) : seuls les fichiers du PROGRAMME (même adresse) et le SDK Firebase sont gardés en cache.
 // Les données (Firestore, authentification) ne passent jamais par ce cache : elles sont gérées par Firebase.
 // Garder VERSION identique à js/version.js (un test le vérifie).
-const VERSION = '1.21.0';
+const VERSION = '1.21.1';
 const CACHE = 'animerci-' + VERSION;
 const COQUILLE = ['./', 'index.html', 'manifest.webmanifest', 'favicon.svg', 'css/style.css', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-192.png', 'icons/maskable-512.png', 'icons/apple-touch-icon.png', 'icons/favicon-32.png', 'js/annuaire.js','js/accueils.js','js/app.js','js/backup.js','js/budgets.js','js/regie.js','js/config.js','js/donnees.js','js/fusion.js','js/import-logic.js', 'js/prenoms.js','js/importer.js','js/inscrire.js','js/logic.js','js/materiel.js', 'js/adhesions.js','js/portage.js','js/parametres.js', 'js/partenaires.js','js/pwa.js','js/recherche.js','js/securite.js','js/seeds.js','js/store.js','js/ui.js','js/version.js','js/views-activites.js','js/views-core.js','js/views-equipe.js'];
 

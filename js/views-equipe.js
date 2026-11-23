@@ -20,7 +20,7 @@ export function equipe() {
   }).join('') : '<div class="empty"><b>Aucun accès créé</b>Ajoutez la première personne avec le bouton en haut.</div>';
   return `<div class="top"><div><h1>Équipe</h1><p>Qui peut se connecter, et ce qu'elle ou il voit.</p></div>
     <div class="quick"><button class="btn" data-action="equipe-form">+ Ajouter une personne</button></div></div>
-    <div class="card" style="margin-bottom:14px"><p class="sub" style="margin:0"><b>Administratrice</b> : tout. <b>Intervenant·e</b> : uniquement les inscrits et les appels de ses activités (elle ou il ne peut pas valider). <b>Bénévole</b> : le planning seulement. <b>Accès provisoires</b> : pour une personne de l'équipe, cochez Matériel, Portage de repas ou (bénévoles seulement) Saisie des inscriptions, avec une date de fin facultative. Sans case cochée, une intervenante ou un bénévole ne voit que ce qui précède. La suppression, les exports et les paramètres restent à l'administratrice.</p></div>
+    <div class="card" style="margin-bottom:14px"><p class="sub" style="margin:0"><b>Administratrice</b> : tout. <b>Intervenant·e</b> : uniquement les inscrits et les appels de ses activités (elle ou il ne peut pas valider). <b>Bénévole</b> : le planning seulement. <b>Accès provisoires</b> : pour une personne de l'équipe, cochez Matériel, Portage de repas, Budgets et régie ou (bénévoles seulement) Saisie des inscriptions, avec une date de fin facultative. Sans case cochée, une intervenante ou un bénévole ne voit que ce qui précède. La suppression, les exports et les paramètres restent à l'administratrice.</p></div>
     ${liste}`;
 }
 
