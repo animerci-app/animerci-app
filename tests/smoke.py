@@ -13,7 +13,7 @@ with sync_playwright() as p:
     check(pg.locator('.demo-banner').count()==1,'bandeau démonstration affiché')
     pg.click('text=Essayer comme administratrice'); pg.wait_for_selector('text=Que voulez-vous faire')
     check('Responsable' in pg.inner_text('h1'),'accueil admin')
-    check(pg.locator('nav.side .nav-btn[data-v]').count()==13,'13 entrées de menu pour l\'administratrice')
+    check(pg.locator('nav.side .nav-btn[data-v]').count()==14,'14 entrées de menu pour l\'administratrice')
     # Personnes : ajout
     pg.click('nav.side [data-v=seniors]'); pg.wait_for_selector('#liste .cand')
     n0=pg.locator('#liste .cand').count()
@@ -203,7 +203,7 @@ with sync_playwright() as p:
     check(pg.locator('text=Enregistrer et valider').count()==0,'intervenante : ne peut pas valider l\'appel')
     pg.screenshot(path='/tmp/interv.png')
     pg.click('text=Se déconnecter'); pg.click('text=Essayer comme bénévole'); pg.wait_for_selector('.cal')
-    check(pg.locator('nav.side .nav-btn[data-v]').count()==3,'bénévole : planning, matériel et portage')
+    check(pg.locator('nav.side .nav-btn[data-v]').count()==4,'bénévole : planning, matériel, portage et inscriptions')
     b.close()
 print('Erreurs console :',errs if errs else 'aucune')
 print('ÉCHECS :',fails if fails else 'aucun')

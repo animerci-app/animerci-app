@@ -4,9 +4,9 @@
 // l'information est toujours écrite en toutes lettres (« Oui », « Présent·e »…), jamais portée par une couleur.
 import { store, lecturesDuJour, MODE_REEL } from './store.js';
 import { S, $, esc, toast, patienter, confirmer, aujourdhui } from './ui.js';
-import { STATUTS_PRESENCE, lieuDeVie, libelleFrequence, TYPES_ECHANGE, STATUTS_CONVENTION, tableauxMateriel, tableauxSuiviPortage, telephones, prochesDe, tableauxAdhesions } from './logic.js';
+import { STATUTS_PRESENCE, lieuDeVie, libelleFrequence, TYPES_ECHANGE, STATUTS_CONVENTION, tableauxMateriel, tableauxSuiviPortage, tableauxAccueils, telephones, prochesDe, tableauxAdhesions } from './logic.js';
 import { VERSION } from './version.js';
-import { P } from './parametres.js';
+import { P, moduleActif } from './parametres.js';
 
 const CLE = 'animerci-derniere-sauvegarde';
 const STATUT_INS = { inscrit: 'Inscrit·e', invite: 'Invité·e', attente: 'En attente' };
@@ -19,7 +19,7 @@ const fr = d => (d && /^\d{4}-\d{2}-\d{2}/.test(d) ? d.slice(8, 10) + '/' + d.sl
 // Données complètes pour une sauvegarde : lues directement dans la base (l'écran, lui, ne charge que ce qu'il affiche).
 let SAUV = null;
 async function lireTout() {
-  const T = {}, cols = ['seniors', 'activites', 'inscriptions', 'seances', 'fiches', 'taches', 'contacts', 'echanges', 'conventions', 'materiel', 'emprunts', 'mouvements', 'portage', 'portageEchanges', 'users', 'parametres'];
+  const T = {}, cols = ['seniors', 'activites', 'inscriptions', 'seances', 'fiches', 'taches', 'contacts', 'echanges', 'conventions', 'materiel', 'emprunts', 'mouvements', 'portage', 'portageEchanges', 'accueils', 'users', 'parametres'];
   for (const c of cols) T[c] = await store.lire(c);
   T.corbeille = []; T.journal = [];
   return T;
@@ -56,6 +56,7 @@ export function tableaux({ fiches = false } = {}) {
     rows: [...(C.conventions || [])].sort((a, b) => (a.echeance || '9999').localeCompare(b.echeance || '9999')).map(k => [k.partenaire, k.intitule, STATUTS_CONVENTION[k.statut] || k.statut, fr(k.signature), fr(k.echeance), k.emplacement, k.note]) });
   T.push(...tableauxMateriel({ materiel: C.materiel || [], emprunts: C.emprunts || [], mouvements: C.mouvements || [] }, aujourdhui()));
   T.push(...tableauxSuiviPortage(C.portage || [], C.portageEchanges || []));
+  if (moduleActif('accueils')) T.push(...tableauxAccueils(C.accueils || [], Number(aujourdhui().slice(0, 4)), C.contacts || [], P('annuaire.rubriques.activiteBenevole'), aujourdhui()));
   T.push({ nom: 'Inscriptions', titre: 'Inscriptions et listes d\'attente',
     cols: ['Activité', 'Personne', 'Situation', 'Date de la demande', 'Origine'],
     rows: [...C.inscriptions].sort((a, b) => (nomAct(a.activiteId) + nomSen(a.seniorId)).localeCompare(nomAct(b.activiteId) + nomSen(b.seniorId), 'fr'))
@@ -152,7 +153,7 @@ export function imprimer(html) {
 /* ---------- Fichier complet de restauration (JSON) ---------- */
 const COLS_SAUVEES = ['seniors', 'activites', 'inscriptions', 'seances', 'fiches', 'taches'];
 export function exportJson() {
-  return JSON.stringify({ application: 'animerci', version: 1, versionOutil: VERSION, date: new Date().toISOString(), donnees: Object.fromEntries(COLS_SAUVEES.map(c => [c, (SAUV || S.cache)[c]])), equipe: (SAUV || S.cache).users, parametres: (SAUV || S.cache).parametres, contacts: (SAUV || S.cache).contacts, echanges: (SAUV || S.cache).echanges || [], conventions: (SAUV || S.cache).conventions || [], materiel: (SAUV || S.cache).materiel || [], emprunts: (SAUV || S.cache).emprunts || [], mouvements: (SAUV || S.cache).mouvements || [], portage: (SAUV || S.cache).portage || [], portageEchanges: (SAUV || S.cache).portageEchanges || [] }, null, 1);
+  return JSON.stringify({ application: 'animerci', version: 1, versionOutil: VERSION, date: new Date().toISOString(), donnees: Object.fromEntries(COLS_SAUVEES.map(c => [c, (SAUV || S.cache)[c]])), equipe: (SAUV || S.cache).users, parametres: (SAUV || S.cache).parametres, contacts: (SAUV || S.cache).contacts, echanges: (SAUV || S.cache).echanges || [], conventions: (SAUV || S.cache).conventions || [], materiel: (SAUV || S.cache).materiel || [], emprunts: (SAUV || S.cache).emprunts || [], mouvements: (SAUV || S.cache).mouvements || [], portage: (SAUV || S.cache).portage || [], portageEchanges: (SAUV || S.cache).portageEchanges || [], accueils: (SAUV || S.cache).accueils || [] }, null, 1);
 }
 export function lireSauvegarde(texte) {
   let d; try { d = JSON.parse(texte); } catch (e) { throw new Error('Ce fichier n\'est pas une sauvegarde valide (illisible).'); }
@@ -170,6 +171,8 @@ export function lireSauvegarde(texte) {
   out.conventions = Array.isArray(d.conventions) ? d.conventions.filter(r => r && r.id && !/[\/]/.test(String(r.id))) : [];
   // facultatifs : absents des sauvegardes d'avant la 1.17.0
   // facultatifs : absents des sauvegardes d'avant la 1.19.0
+  // facultatif : absent des sauvegardes d'avant la 1.20.0
+  out.accueils = Array.isArray(d.accueils) ? d.accueils.filter(r => r && r.id && !/[\/]/.test(String(r.id))) : [];
   for (const c of ['portage', 'portageEchanges']) out[c] = Array.isArray(d[c]) ? d[c].filter(r => r && r.id && !/[\/]/.test(String(r.id))) : [];
   for (const c of ['materiel', 'emprunts', 'mouvements']) out[c] = Array.isArray(d[c]) ? d[c].filter(r => r && r.id && !/[\/]/.test(String(r.id))) : [];
   return { donnees: out, date: d.date };
@@ -239,11 +242,11 @@ export function brancher() {
     const fic = f.files[0]; if (!fic) return;
     try {
       const { donnees, date } = lireSauvegarde(await fic.text());
-      const total = COLS_SAUVEES.concat('parametres', 'contacts', 'echanges', 'conventions', 'materiel', 'emprunts', 'mouvements', 'portage', 'portageEchanges').reduce((n, c) => n + donnees[c].length, 0);
+      const total = COLS_SAUVEES.concat('parametres', 'contacts', 'echanges', 'conventions', 'materiel', 'emprunts', 'mouvements', 'portage', 'portageEchanges', 'accueils').reduce((n, c) => n + donnees[c].length, 0);
       const resume = COLS_SAUVEES.map(c => `${donnees[c].length} ${c}`).join(', ');
       confirmer('Restaurer cette sauvegarde ?', `Sauvegarde du ${date ? fr(date.slice(0, 10)) : '?'} : ${resume}. ${total > 15000 ? 'Attention : volume supérieur au quota quotidien gratuit d\'écritures.' : ''} Les données seront ajoutées ou remises à jour, sans rien supprimer.`, 'Restaurer', async () => {
         let n = 0, deja = 0;
-        for (const c of COLS_SAUVEES.concat('parametres', 'contacts', 'echanges', 'conventions', 'materiel', 'emprunts', 'mouvements', 'portage', 'portageEchanges')) for (const r of donnees[c]) {
+        for (const c of COLS_SAUVEES.concat('parametres', 'contacts', 'echanges', 'conventions', 'materiel', 'emprunts', 'mouvements', 'portage', 'portageEchanges', 'accueils')) for (const r of donnees[c]) {
           // Les mouvements de stock ne sont pas modifiables (règles Firestore) : un mouvement déjà présent est laissé tel quel.
           if (c === 'mouvements') { try { await store.save(c, r); } catch (e) { deja++; } } else await store.save(c, r);
           if (++n % 50 === 0) toast(`Restauration… ${n}/${total}`);

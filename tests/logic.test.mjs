@@ -454,7 +454,7 @@ console.log('ok - identifiants des fiches de démonstration');
   assert.ok(['seniors:all', 'contacts:all', 'users:all'].every(x => cols(besoins({ ...base, role: 'admin', view: 'materiel', matPersonnes: true })).includes(x)));
   // équipe : le matériel sans rien d'autre que son périmètre (jamais les personnes, l'annuaire ni les comptes)
   for (const role of ['intervenant', 'benevole']) {
-    const b = cols(besoins({ ...base, role, view: 'materiel', matPersonnes: true, mesActivites: [] }));
+    const b = cols(besoins({ ...base, role, view: 'materiel', matPersonnes: true, mesActivites: [], acces: { materiel: true } }));
     assert.ok(b.includes('materiel:all') && b.includes('emprunts:ouverts'), role + ' : charge le matériel');
     assert.ok(!b.some(x => /^(seniors|contacts|users|conventions|echanges|fiches|taches)/.test(x)), role + ' : aucune donnée hors de son périmètre');
     assert.ok(!cols(besoins({ ...base, role, view: 'planning' })).some(x => /materiel|emprunts/.test(x)), role + ' : rien du matériel hors de l\'écran Matériel');
@@ -643,7 +643,7 @@ t('lot B : échanges avec le prestataire, alertes, tableaux de sauvegarde', () =
 });
 t('lot B : chargement à la demande du portage (administratrice et équipe)', async () => {
   const { besoins } = await import('../js/donnees.js');
-  const ctx = { auj: '2026-11-23', view: 'portage', ongletPortage: 'beneficiaires', activites: [], mesActivites: [] };
+  const ctx = { auj: '2026-11-23', view: 'portage', ongletPortage: 'beneficiaires', activites: [], mesActivites: [], acces: { portage: true } };
   const cles = c => besoins(c).map(b => `${b.col}|${b.key}`);
   for (const role of ['admin', 'intervenant', 'benevole']) assert.ok(cles({ ...ctx, role }).includes('portage|all'), role);
   assert.ok(cles({ ...ctx, role: 'admin' }).includes('seniors|all'), 'l\'administratrice charge les fiches pour la mise en accord');
@@ -656,4 +656,76 @@ t('lot B : chargement à la demande du portage (administratrice et équipe)', as
   const accueil = cles({ ...ctx, role: 'admin', view: 'home', horizonPeremption: '' }); assert.ok(accueil.includes('portage|interrompus') && accueil.includes('portageEchanges|suites'), 'accueil : deux petites listes seulement');
   assert.ok(!cles({ ...ctx, role: 'admin', view: 'home', portageActif: false }).some(k => k.startsWith('portage')));
   assert.ok(!cles({ ...ctx, role: 'admin', view: 'planning', mois: { a: 2026, m: 10 } }).some(k => k.startsWith('portage')), 'les autres écrans ne lisent pas le portage');
+});
+
+/* ---------- Lot E (v1.20.0) ---------- */
+t('lot E : accès provisoires (cases, date de fin, intervenants sans saisie des inscriptions)', () => {
+  const b = { role: 'benevole', acces: { materiel: true, portage: false, inscriptions: true }, accesFin: 20261231 };
+  assert.equal(L.accesActif(b, 'materiel', '2026-12-31'), true);
+  assert.equal(L.accesActif(b, 'materiel', '2027-01-01'), false, 'après la date de fin');
+  assert.equal(L.accesActif(b, 'portage', '2026-11-23'), false, 'case non cochée');
+  assert.equal(L.accesActif({ ...b, accesFin: 0 }, 'inscriptions', '2030-01-01'), true, 'sans date : tant que la case est cochée');
+  assert.equal(L.accesActif({ role: 'intervenant', acces: { inscriptions: true, materiel: true } }, 'inscriptions', '2026-11-23'), false, 'jamais pour une intervenante');
+  assert.equal(L.accesActif({ role: 'intervenant', acces: { materiel: true } }, 'materiel', '2026-11-23'), true);
+  assert.equal(L.accesActif({ role: 'admin' }, 'portage', '2026-11-23'), true);
+  assert.equal(L.accesActif({ role: 'partenaire', acces: { materiel: true } }, 'materiel', '2026-11-23'), false);
+  assert.equal(L.accesActif(null, 'materiel', '2026-11-23'), false);
+  assert.deepEqual(L.champsAcces({ materiel: true }, '2026-12-31'), { acces: { materiel: true, portage: false, inscriptions: false }, accesJusqu: '2026-12-31', accesFin: 20261231 });
+  assert.equal(L.champsAcces({}, 'n\'importe quoi').accesFin, 0);
+  assert.deepEqual(L.resumeAcces(b, '2026-11-23'), ['Accès : Matériel, Saisie des inscriptions (jusqu\'au 31/12/2026)']);
+});
+t('lot E : besoins() selon les accès cochés', async () => {
+  const { besoins } = await import('../js/donnees.js');
+  const c = { auj: '2026-11-23', activites: [], mesActivites: [] }, cles = x => besoins({ ...c, ...x }).map(b => `${b.col}|${b.key}`);
+  assert.ok(!cles({ role: 'benevole', view: 'materiel', acces: {} }).some(k => /materiel|emprunts/.test(k)), 'sans case : rien du matériel');
+  assert.ok(!cles({ role: 'intervenant', view: 'portage', acces: {} }).some(k => k.startsWith('portage')), 'sans case : rien du portage');
+  assert.ok(cles({ role: 'benevole', view: 'inscrire', acces: { inscriptions: true }, inscrActId: 'a1' }).includes('seniorsLite|all'));
+  assert.ok(cles({ role: 'benevole', view: 'inscrire', acces: { inscriptions: true }, inscrActId: 'a1' }).includes('inscriptions|a1'));
+  assert.ok(!cles({ role: 'benevole', view: 'inscrire', acces: {} }).includes('seniorsLite|all'), 'sans case : pas de liste restreinte');
+  assert.ok(!cles({ role: 'intervenant', view: 'inscrire', acces: { inscriptions: true } }).includes('seniorsLite|all'), 'jamais pour une intervenante');
+  assert.ok(cles({ role: 'admin', view: 'accueils' }).includes('accueils|all'));
+  assert.ok(cles({ role: 'admin', view: 'home' }).includes('accueils|ouverts'));
+  assert.ok(!cles({ role: 'admin', view: 'home', decembre: false }).includes('contacts|all') && cles({ role: 'admin', view: 'home', decembre: true }).includes('contacts|all'));
+});
+t('lot E : copie restreinte des personnes et synchronisation sans écriture inutile', () => {
+  const s = { id: 's1', nom: 'Martin', prenom: 'Anne', nomNaissance: 'Durand', statut: 'adherent', naissance: '1944-05-17', tel: '0600000000', adresse: '1 rue X', adhesions: [{ annee: 2025, paye: true, date: '2025-01-05', montant: 40 }] };
+  const l = L.copieSeniorLite(s);
+  assert.deepEqual(l, { id: 's1', nom: 'Martin', prenom: 'Anne', nomNaissance: 'Durand', statut: 'adherent', anneeNaissance: 1944, adhPayees: [2025] });
+  assert.ok(!JSON.stringify(l).includes('0600') && !JSON.stringify(l).includes('rue') && !JSON.stringify(l).includes('05-17'), 'ni téléphone, ni adresse, ni date complète');
+  const p1 = L.planSynchroLite([s], {});
+  assert.equal(p1.ecrire.length, 1); assert.deepEqual(p1.supprimer, []);
+  const p2 = L.planSynchroLite([s], p1.table); assert.equal(p2.ecrire.length, 0, 'rien à réécrire');
+  const p3 = L.planSynchroLite([{ ...s, tel: '0611111111' }], p1.table); assert.equal(p3.ecrire.length, 0, 'un champ non copié ne déclenche aucune écriture');
+  const p4 = L.planSynchroLite([{ ...s, prenom: 'Annie' }], p1.table); assert.equal(p4.ecrire.length, 1);
+  const p5 = L.planSynchroLite([], p1.table); assert.deepEqual(p5.supprimer, ['s1'], 'personne supprimée : copie supprimée');
+  assert.equal(L.cotisationAReglerLite(l, 2026), true); assert.equal(L.cotisationAReglerLite(l, 2025), false);
+  assert.equal(L.cotisationAReglerLite({ ...l, statut: 'resident' }, 2026), false);
+  assert.equal(L.nomLite(l, [l]), 'Anne Martin');
+  assert.equal(L.nomLite(l, [l, { ...l, id: 's2', anneeNaissance: 1950 }]), 'Anne Martin (né·e en 1944)');
+});
+t('lot E : accueils, heures de mission, retard et alertes', () => {
+  const b = { id: 'b1', type: 'bourse', nom: 'Fictif', prenom: 'Léa', debut: '2026-09-01', fin: '2026-12-30', objectifHeures: 50, montant: 500, convention: { etat: 'signee', echeance: '2026-12-15' }, heures: [{ id: 'h1', date: '2026-09-10', heures: 3, validee: true }, { id: 'h2', date: '2026-10-01', heures: 2.5, validee: false }] };
+  assert.equal(L.erreurAccueil(b), ''); assert.ok(L.erreurAccueil({ ...b, nom: '' })); assert.ok(L.erreurAccueil({ ...b, fin: '2026-08-01' })); assert.ok(L.erreurAccueil({ ...b, objectifHeures: 0 })); assert.ok(L.erreurAccueil({ ...b, type: 'x' }));
+  const H = L.bilanHeures(b, '2026-11-23');
+  assert.equal(H.validees, 3); assert.equal(H.aValider, 2.5); assert.equal(H.restantes, 47);
+  assert.ok(H.attendues > 30 && H.attendues < 40, 'au prorata : ' + H.attendues); assert.ok(H.retard > 25);
+  assert.equal(L.erreurHeure({ date: '2026-11-01', heures: 2.5 }), ''); assert.ok(L.erreurHeure({ date: '2026-11-01', heures: 0 })); assert.ok(L.erreurHeure({ date: '2026-11-01', heures: 2.3 })); assert.ok(L.erreurHeure({ date: '', heures: 1 }));
+  const b2 = L.avecHeure(b, { date: '2026-11-02', heures: 1, validee: true }); assert.equal(L.heuresDe(b2).length, 3); assert.equal(L.heuresDe(L.sansHeure(b2, 'h1')).length, 2);
+  assert.equal(L.heuresDe(L.avecHeureValidee(b, 'h2', true)).filter(h => h.validee !== false).length, 2);
+  assert.equal(L.statutAccueil(b, '2026-11-23'), 'encours'); assert.equal(L.statutAccueil(b, '2027-02-01'), 'termine'); assert.equal(L.statutAccueil({ ...b, clos: true }, '2026-11-23'), 'clos'); assert.equal(L.statutAccueil(b, '2026-08-01'), 'avenir');
+  const c = { id: 'c1', type: 'civique', nom: 'Exemple', prenom: 'Samir', debut: '2026-06-01', fin: '2026-12-10', convention: { etat: 'asigner' }, bilan: '' };
+  const A = L.alertesAccueils({ accueils: [b, c, { ...b, id: 'b3', clos: true, convention: { etat: 'asigner' } }], auj: '2026-11-23', joursConv: 30, seuilHeures: 10 }).map(x => x.texte);
+  assert.ok(A.some(t => /1 convention à signer.*Exemple/.test(t)), 'convention à signer'); assert.ok(A.some(t => /bilan.*Exemple/.test(t)), 'bilan à préparer'); assert.ok(A.some(t => /Bourse : 1 jeune en retard/.test(t)), 'retard des heures'); assert.ok(A.some(t => /1 convention arrivant à échéance.*Fictif/.test(t)), 'échéance');
+  assert.ok(!A.some(t => /b3/.test(t)) && A.filter(t => /à signer/.test(t)).length === 1, 'une fiche close ne déclenche rien');
+  const ben = [{ id: 'x1', categorie: 'Bénévole', nom: 'A' }, { id: 'x2', categorie: 'Bénévole', nom: 'B', remerciements: [2026] }, { id: 'x3', categorie: 'Bénévole', nom: 'C', inactif: true }, { id: 'x4', categorie: 'Collègue', nom: 'D' }];
+  assert.ok(L.alertesAccueils({ benevoles: ben, categorieBenevole: 'Bénévole', auj: '2026-12-05' }).some(a => /1 bénévole à remercier pour 2026/.test(a.texte)));
+  assert.equal(L.alertesAccueils({ benevoles: ben, categorieBenevole: 'Bénévole', auj: '2026-11-05' }).length, 0, 'seulement en décembre');
+  const S = L.statsAccueils([b, c, { ...b, id: 'b4', verseLe: '2026-12-20' }], 2026, ben, 'Bénévole');
+  assert.equal(S.par.bourse.actifs, 2); assert.equal(S.par.civique.actifs, 1); assert.equal(S.par.bourse.heures, 6); assert.equal(S.benevolesActifs, 2); assert.equal(S.benevolesRemercies, 1); assert.equal(S.nbBourses, 1); assert.equal(S.montantBourses, 500);
+  const T = L.tableauxAccueils([b, c], 2026, ben, 'Bénévole', '2026-11-23'); assert.equal(T.length, 3); assert.ok(T[2].rows.length === 2); assert.ok(!JSON.stringify(T).toLowerCase().includes('santé'));
+});
+t('lot E : les données de démonstration sont cohérentes', () => {
+  const d = donneesDemo(); assert.equal(d.accueils.length, 3); assert.equal(d.seniorsLite.length, d.seniors.length);
+  for (const a of d.accueils) assert.equal(L.erreurAccueil(a), '', a.id);
+  assert.ok(d.seniorsLite.every(l => !('naissance' in l) && !('tel' in l) && !('adresse' in l)));
 });

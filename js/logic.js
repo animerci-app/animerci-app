@@ -363,7 +363,7 @@ export function programme(activites, du, au) {
   return { mois, regulieres };
 }
 // Alertes de l'accueil, calculées sur les données déjà chargées (aucune lecture en plus)
-export function alertesAccueil({ activites, inscriptions, seances, taches, auj, echanges = [], conventions = [], joursConv = 30, materiel = [], emprunts = [], joursPeremption = 30, fiches = null, portages = [], echangesPortage = [] }) {
+export function alertesAccueil({ activites, inscriptions, seances, taches, auj, echanges = [], conventions = [], joursConv = 30, materiel = [], emprunts = [], joursPeremption = 30, fiches = null, portages = [], echangesPortage = [], accueils = [], benevoles = [], categorieBenevole = '', seuilHeures = 10 }) {
   const A = [], nomAct = id => (activites.find(a => a.id === id) || {}).nom;
   const ouvertes = taches.filter(t => !t.done);
   const retard = ouvertes.filter(t => t.echeance && t.echeance < auj).sort((x, y) => x.echeance.localeCompare(y.echeance));
@@ -378,6 +378,7 @@ export function alertesAccueil({ activites, inscriptions, seances, taches, auj, 
   A.push(...alertesMateriel({ materiel, emprunts, auj, joursPeremption }));
   if (fiches) A.push(...alertesFiches(fiches));
   A.push(...alertesPortage({ portages, echanges: echangesPortage, auj }));
+  A.push(...alertesAccueils({ accueils, benevoles, categorieBenevole, auj, joursConv, seuilHeures }));
   return A;
 }
 
@@ -969,4 +970,167 @@ export function alertesPortage({ portages = [], echanges = [], auj }) {
   const suites = echanges.filter(e => e.suiteAFaire);
   if (suites.length) A.push({ niveau: 'info', texte: `Portage : ${suites.length} suite${suites.length > 1 ? 's' : ''} à donner avec le prestataire`, vue: 'portage', tab: 'echanges' });
   return A;
+}
+
+/* ============================================================================================================
+   Lot E (v1.20.0) : accès provisoires de l'équipe, vue restreinte des personnes, accueils (jeunes adultes, services civiques, stagiaires), bénévoles
+   Tout est écrit pour l'ORGANISATION du service : aucune donnée de santé.
+   ============================================================================================================ */
+export const MODULES_ACCES = { materiel: 'Matériel', portage: 'Portage de repas', inscriptions: 'Saisie des inscriptions' };
+/** « 2026-12-31 » → 20261231 (0 si la date est invalide). Sert à comparer sans fuseau et à écrire la règle Firestore. */
+export const dateEnNombre = iso => (/^\d{4}-\d{2}-\d{2}$/.test(iso || '') ? Number(iso.replace(/-/g, '')) : 0);
+/**
+ * Un compte a-t-il accès à un module ? L'administratrice : toujours. Intervenant·e : jamais aux inscriptions (elle ou il ne renseigne que la présence ou l'absence) ;
+ * Matériel et Portage seulement si la case est cochée. Bénévole : seulement les cases cochées. L'accès s'arrête après la date « jusqu'au » (incluse) si elle est indiquée.
+ */
+export function accesActif(user, module, auj) {
+  if (!user || !(module in MODULES_ACCES)) return false;
+  if (user.role === 'admin') return true;
+  if (user.role !== 'intervenant' && user.role !== 'benevole') return false;
+  if (module === 'inscriptions' && user.role !== 'benevole') return false;
+  if (!(user.acces && user.acces[module] === true)) return false;
+  const fin = Number(user.accesFin) || 0;
+  return !fin || dateEnNombre(auj) <= fin;
+}
+/** Champs à enregistrer sur le compte : cases cochées et date de fin facultative (accesFin = nombre AAAAMMJJ, 0 si aucune). */
+export function champsAcces(cases, jusqu) {
+  const acces = {}; for (const k of Object.keys(MODULES_ACCES)) acces[k] = !!(cases && cases[k]);
+  const ok = DATE_ISO.test(jusqu || '');
+  return { acces, accesJusqu: ok ? jusqu : '', accesFin: ok ? dateEnNombre(jusqu) : 0 };
+}
+/** Texte court des accès d'un compte, pour la liste de l'Équipe. */
+export function resumeAcces(user, auj) {
+  if (!user || (user.role !== 'intervenant' && user.role !== 'benevole')) return [];
+  const R = Object.entries(MODULES_ACCES).filter(([k]) => !(k === 'inscriptions' && user.role !== 'benevole') && user.acces && user.acces[k] === true).map(([, l]) => l);
+  if (!R.length) return [];
+  const fin = Number(user.accesFin) || 0;
+  return [`Accès : ${R.join(', ')}${fin ? (dateEnNombre(auj) > fin ? ' (terminé le ' : ' (jusqu\'au ') + fmtDate(user.accesJusqu || String(fin).replace(/^(\d{4})(\d{2})(\d{2})$/, '$1-$2-$3')) + ')' : ''}`];
+}
+
+/* ---------- Vue restreinte des personnes (saisie des inscriptions par l'équipe) ---------- */
+/** Ce que l'équipe voit d'une personne : nom, prénom, nom de jeune fille, statut, année de naissance, années de cotisation réglées. Ni téléphone, ni adresse, ni date complète. */
+export function copieSeniorLite(s) {
+  return { id: s.id, nom: s.nom || '', prenom: s.prenom || '', nomNaissance: s.nomNaissance || '', statut: s.statut || '',
+    anneeNaissance: s.naissance && /^\d{4}/.test(String(s.naissance)) ? Number(String(s.naissance).slice(0, 4)) : 0, adhPayees: adhesionsDe(s).filter(a => a.paye).map(a => a.annee) };
+}
+/** Empreinte courte d'un document : sert à ne réécrire que ce qui a changé. */
+export function empreinte(o) {
+  const t = JSON.stringify(o); let h = 5381;
+  for (let i = 0; i < t.length; i++) h = ((h << 5) + h + t.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36) + t.length.toString(36);
+}
+/** Plan de mise en accord : documents à écrire, identifiants à supprimer, et nouvelle table d'empreintes (enregistrée dans parametres/lite). */
+export function planSynchroLite(seniors, empreintes) {
+  const connus = empreintes || {}, ecrire = [], table = {};
+  for (const s of seniors) { const d = copieSeniorLite(s), h = empreinte(d); table[s.id] = h; if (connus[s.id] !== h) ecrire.push(d); }
+  return { ecrire, supprimer: Object.keys(connus).filter(id => !(id in table)), table };
+}
+/** Cotisation à régler pour l'année ? (adhérent·e sans règlement de l'année) */
+export const cotisationAReglerLite = (l, annee) => !!l && l.statut === 'adherent' && !(l.adhPayees || []).includes(annee);
+/** Nom affiché d'une fiche restreinte, complété de l'année de naissance s'il existe un·e homonyme. */
+export function nomLite(l, tous) {
+  const base = `${l.prenom} ${l.nom}`.trim(), cles = x => new Set([cleNom(`${x.prenom} ${x.nom}`), ...(x.nomNaissance ? [cleNom(`${x.prenom} ${x.nomNaissance}`)] : [])]);
+  const k = cles(l), h = tous.filter(x => x.id !== l.id && [...cles(x)].some(c => k.has(c)));
+  if (!h.length) return base;
+  return l.anneeNaissance ? `${base} (né·e en ${l.anneeNaissance})` : `${base} (année de naissance à renseigner)`;
+}
+
+/* ---------- Accueils : jeunes adultes (bourse), services civiques, stagiaires ---------- */
+export const TYPES_ACCUEIL = { bourse: 'Jeune adulte (bourse)', civique: 'Service civique', stagiaire: 'Stagiaire' };
+export const ONGLETS_ACCUEIL = { bourse: 'Jeunes adultes (bourse)', civique: 'Services civiques', stagiaire: 'Stagiaires' };
+export const ETATS_CONVENTION = { sans: 'Pas de convention', asigner: 'À signer', signee: 'Signée' };
+export const OBJECTIF_HEURES_DEFAUT = 50, MONTANT_BOURSE_DEFAUT = 500;
+const ecartJours = (a, b) => Math.round((Date.parse(b + 'T12:00:00Z') - Date.parse(a + 'T12:00:00Z')) / 864e5);
+const plusJours = (iso, n) => new Date(Date.parse(iso + 'T12:00:00Z') + n * 864e5).toISOString().slice(0, 10);
+export const nomAccueil = d => `${d.prenom || ''} ${d.nom || ''}`.trim() || 'Personne';
+/** Situation d'un accueil : 'clos' (clôturé à la main), 'avenir', 'encours' ou 'termine' (date de fin dépassée mais pas encore clôturé). */
+export function statutAccueil(d, auj) {
+  if (d.clos) return 'clos';
+  if (d.debut && d.debut > auj) return 'avenir';
+  if (d.fin && d.fin < auj) return 'termine';
+  return 'encours';
+}
+export const LIBELLES_STATUT_ACCUEIL = { avenir: 'À venir', encours: 'En cours', termine: 'Terminé, à clôturer', clos: 'Clos' };
+const num = v => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
+export const heuresDe = d => (Array.isArray(d.heures) ? d.heures : []).filter(h => h && DATE_ISO.test(h.date || '') && num(h.heures) > 0).sort((a, b) => a.date.localeCompare(b.date));
+/** Heures de mission : validées, à valider, restantes par rapport à l'objectif, et retard sur le rythme prévu (pro rata de la période de mission). */
+export function bilanHeures(d, auj) {
+  const H = heuresDe(d), objectif = num(d.objectifHeures), validees = H.filter(h => h.validee !== false).reduce((n, h) => n + num(h.heures), 0), aValider = H.filter(h => h.validee === false).reduce((n, h) => n + num(h.heures), 0);
+  let attendues = null;
+  if (objectif && DATE_ISO.test(d.debut || '') && DATE_ISO.test(d.fin || '') && d.fin >= d.debut && auj >= d.debut) {
+    const total = ecartJours(d.debut, d.fin) + 1, ecoules = Math.min(total, ecartJours(d.debut, auj) + 1);
+    attendues = Math.round((objectif * ecoules / total) * 4) / 4;
+  }
+  return { objectif, validees, aValider, restantes: Math.max(0, objectif - validees), attendues, retard: attendues == null ? 0 : Math.max(0, Math.round((attendues - validees) * 4) / 4) };
+}
+export function erreurAccueil(d) {
+  if (!TYPES_ACCUEIL[d.type]) return 'Le type d\'accueil est inconnu.';
+  if (!String(d.nom || '').trim()) return 'Le nom est nécessaire.';
+  if (d.debut && !DATE_ISO.test(d.debut)) return 'La date de début est invalide.';
+  if (d.fin && !DATE_ISO.test(d.fin)) return 'La date de fin est invalide.';
+  if (d.debut && d.fin && d.fin < d.debut) return 'La date de fin est avant la date de début.';
+  if (d.type === 'bourse' && (num(d.objectifHeures) <= 0 || num(d.objectifHeures) > 1000)) return 'L\'objectif d\'heures doit être compris entre 1 et 1 000.';
+  if (d.convention && d.convention.echeance && !DATE_ISO.test(d.convention.echeance)) return 'L\'échéance de la convention est invalide.';
+  if (d.montant != null && d.montant !== '' && (num(d.montant) < 0 || num(d.montant) > 100000)) return 'Le montant de la bourse est invalide.';
+  return '';
+}
+export function erreurHeure(h) {
+  if (!DATE_ISO.test(h.date || '')) return 'Indiquez la date de la mission.';
+  const n = num(h.heures); if (n <= 0 || n > 24) return 'Le nombre d\'heures doit être compris entre 0,25 et 24.';
+  if (Math.abs(n * 4 - Math.round(n * 4)) > 1e-9) return 'Les heures se comptent par quarts d\'heure (0,25 ; 0,5 ; 1…).';
+  return '';
+}
+export const avecHeure = (d, h) => ({ ...d, heures: [...(Array.isArray(d.heures) ? d.heures : []), { id: uid(), ...h, heures: num(h.heures) }] });
+export const sansHeure = (d, id) => ({ ...d, heures: (Array.isArray(d.heures) ? d.heures : []).filter(h => h.id !== id) });
+export const avecHeureValidee = (d, id, validee) => ({ ...d, heures: (Array.isArray(d.heures) ? d.heures : []).map(h => (h.id === id ? { ...h, validee } : h)) });
+export const avecRdv = (d, r) => ({ ...d, rdv: [...(Array.isArray(d.rdv) ? d.rdv : []), { id: uid(), ...r }] });
+export const sansRdv = (d, id) => ({ ...d, rdv: (Array.isArray(d.rdv) ? d.rdv : []).filter(r => r.id !== id) });
+
+/* ---------- Bénévoles (fiches de l'Annuaire enrichies) ---------- */
+export const benevolesActifs = (contacts, categorie) => contacts.filter(c => c.categorie === categorie && !c.inactif);
+export const aRemercier = (contacts, categorie, annee) => benevolesActifs(contacts, categorie).filter(c => !(Array.isArray(c.remerciements) && c.remerciements.includes(annee)));
+
+/* ---------- Alertes et statistiques des accueils ---------- */
+export function alertesAccueils({ accueils = [], benevoles = [], categorieBenevole = '', auj, joursConv = 30, seuilHeures = 10 }) {
+  const A = [], horizon = plusJours(auj, joursConv), ouverts = accueils.filter(d => !d.clos), an = Number(String(auj).slice(0, 4)), mois = Number(String(auj).slice(5, 7));
+  const liste = (rows, f) => `${rows.slice(0, 3).map(f).join(', ')}${rows.length > 3 ? '…' : ''}`, pl = n => (n > 1 ? 's' : '');
+  const asigner = ouverts.filter(d => d.convention && d.convention.etat === 'asigner' && (!d.debut || d.debut <= horizon));
+  if (asigner.length) A.push({ niveau: asigner.some(d => d.debut && d.debut <= auj) ? 'crit' : 'warn', texte: `${asigner.length} convention${pl(asigner.length)} à signer : ${liste(asigner, nomAccueil)}`, vue: 'accueils', tab: asigner[0].type });
+  const echues = ouverts.filter(d => d.convention && d.convention.etat === 'signee' && d.convention.echeance && d.convention.echeance <= horizon);
+  if (echues.length) A.push({ niveau: 'warn', texte: `${echues.length} convention${pl(echues.length)} arrivant à échéance : ${liste(echues, nomAccueil)}`, vue: 'accueils', tab: echues[0].type });
+  const bilans = ouverts.filter(d => d.fin && d.fin <= horizon && !String(d.bilan || '').trim());
+  if (bilans.length) A.push({ niveau: 'info', texte: `${bilans.length} bilan${pl(bilans.length)} à préparer : ${liste(bilans, nomAccueil)}`, vue: 'accueils', tab: bilans[0].type });
+  const retards = ouverts.filter(d => d.type === 'bourse' && statutAccueil(d, auj) === 'encours' && bilanHeures(d, auj).retard > seuilHeures);
+  if (retards.length) A.push({ niveau: 'warn', texte: `Bourse : ${retards.length} jeune${pl(retards.length)} en retard sur les heures prévues : ${liste(retards, d => `${nomAccueil(d)} (${bilanHeures(d, auj).retard} h)`)}`, vue: 'accueils', tab: 'bourse' });
+  const atteints = ouverts.filter(d => d.type === 'bourse' && num(d.objectifHeures) > 0 && bilanHeures(d, auj).validees >= num(d.objectifHeures) && !d.valideLe);
+  if (atteints.length) A.push({ niveau: 'info', texte: `Bourse : objectif d'heures atteint, validation du dossier à noter : ${liste(atteints, nomAccueil)}`, vue: 'accueils', tab: 'bourse' });
+  if (mois === 12 && categorieBenevole) { const r = aRemercier(benevoles, categorieBenevole, an); if (r.length) A.push({ niveau: 'info', texte: `${r.length} bénévole${pl(r.length)} à remercier pour ${an}`, vue: 'annuaire' }); }
+  return A;
+}
+const chevauche = (d, du, au) => !!d.debut && d.debut <= au && (!d.fin || d.fin >= du);
+export function statsAccueils(accueils, an, benevoles = [], categorieBenevole = '') {
+  const du = `${an}-01-01`, au = `${an}-12-31`, S = {};
+  for (const t of Object.keys(TYPES_ACCUEIL)) {
+    const L1 = accueils.filter(d => d.type === t), actifs = L1.filter(d => chevauche(d, du, au));
+    S[t] = { actifs: actifs.length, nouveaux: L1.filter(d => d.debut && d.debut >= du && d.debut <= au).length, termines: L1.filter(d => d.fin && d.fin >= du && d.fin <= au).length,
+      heures: Math.round(L1.reduce((n, d) => n + heuresDe(d).filter(h => h.validee !== false && h.date >= du && h.date <= au).reduce((m, h) => m + num(h.heures), 0), 0) * 4) / 4,
+      bourses: t === 'bourse' ? L1.filter(d => d.verseLe && d.verseLe >= du && d.verseLe <= au) : [] };
+  }
+  const B = benevolesActifs(benevoles, categorieBenevole);
+  return { par: S, benevolesActifs: B.length, benevolesRemercies: B.filter(c => Array.isArray(c.remerciements) && c.remerciements.includes(an)).length,
+    montantBourses: S.bourse.bourses.reduce((n, d) => n + num(d.montant), 0), nbBourses: S.bourse.bourses.length };
+}
+export function tableauxAccueils(accueils, an, benevoles = [], categorieBenevole = '', auj = '') {
+  const s = statsAccueils(accueils, an, benevoles, categorieBenevole), n = x => String(x).replace('.', ',');
+  const rows = [];
+  for (const t of Object.keys(TYPES_ACCUEIL)) rows.push([TYPES_ACCUEIL[t] + ' : accueillis dans l\'année', n(s.par[t].actifs)], [TYPES_ACCUEIL[t] + ' : nouveaux', n(s.par[t].nouveaux)], [TYPES_ACCUEIL[t] + ' : missions terminées', n(s.par[t].termines)], [TYPES_ACCUEIL[t] + ' : heures validées dans l\'année', n(s.par[t].heures)]);
+  rows.push(['Bourses versées dans l\'année', n(s.nbBourses)], ['Montant des bourses versées (€)', n(s.montantBourses)], ['Bénévoles actifs (Annuaire)', n(s.benevolesActifs)], [`Bénévoles remerciés en ${an}`, n(s.benevolesRemercies)]);
+  const lignes = accueils.filter(d => chevauche(d, `${an}-01-01`, `${an}-12-31`)).sort((a, b) => a.type.localeCompare(b.type) || String(a.nom).localeCompare(String(b.nom), 'fr'));
+  return [
+    { nom: `Accueils ${an}`, titre: `Accueils : chiffres de l'année ${an}`, cols: ['Indicateur', String(an)], rows },
+    { nom: 'Accueils', titre: `Accueils de l'année ${an}`, cols: ['Type', 'Nom', 'Prénom', 'Début', 'Fin', 'Situation', 'Convention', 'Heures validées', 'Objectif', 'État du dossier', 'Bourse versée le'],
+      rows: lignes.map(d => [TYPES_ACCUEIL[d.type], d.nom || '', d.prenom || '', fmtDate(d.debut), fmtDate(d.fin), LIBELLES_STATUT_ACCUEIL[statutAccueil(d, auj || `${an}-12-31`)], ETATS_CONVENTION[(d.convention && d.convention.etat) || 'sans'], n(bilanHeures(d, auj || `${an}-12-31`).validees), d.type === 'bourse' ? n(num(d.objectifHeures)) : '', d.etatDossier || '', fmtDate(d.verseLe)]) },
+    { nom: 'Heures de mission', titre: `Heures de mission ${an}`, cols: ['Nom', 'Prénom', 'Date', 'Heures', 'Mission', 'Validée'],
+      rows: lignes.flatMap(d => heuresDe(d).filter(h => h.date >= `${an}-01-01` && h.date <= `${an}-12-31`).map(h => [d.nom || '', d.prenom || '', fmtDate(h.date), n(num(h.heures)), h.mission || '', h.validee === false ? 'non' : 'oui'])) }
+  ];
 }

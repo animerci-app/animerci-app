@@ -1,5 +1,5 @@
 // Données FICTIVES pour le mode démonstration. Aucune personne réelle.
-import { uid, completerSenior, copiePortage, avecEvenementPortage, ANNEE_REFERENCE_PORTAGE } from './logic.js';
+import { uid, completerSenior, copiePortage, copieSeniorLite, avecEvenementPortage, ANNEE_REFERENCE_PORTAGE } from './logic.js';
 
 const iso = d => d.toISOString().slice(0, 10);
 const plusJours = n => { const d = new Date(); d.setDate(d.getDate() + n); return iso(d); };
@@ -132,5 +132,13 @@ export function donneesDemo() {
     { id: 'pe-2', type: 'livraison', date: plusJours(-40), prestataire: 'Traiteur (démonstration)', objet: 'Livraison en retard le jeudi', resume: 'Retard d\'une heure, excuses reçues.', suite: '', suiteDate: '', suiteFaite: false, suiteAFaire: false, statut: 'clos', par }
   ];
   const parametres = [{ id: 'portage', initialise: le }];
-  return { seniors, activites, inscriptions, seances, fiches, taches, contacts, echanges, conventions, materiel, emprunts, mouvements, portage, portageEchanges, parametres };
+  // Accueils (lot E) : personnes fictives
+  const accueils = [
+    { id: 'ac-1', type: 'bourse', nom: 'Fictif', prenom: 'Léa', debut: plusJours(-60), fin: plusJours(120), objectifHeures: 50, montant: 500, clos: false, convention: { etat: 'signee', echeance: plusJours(120), ou: 'Classeur du bureau' }, missions: 'Aide à l\'animation des après-midi jeux', etatDossier: 'En cours',
+      heures: [{ id: 'h-1', date: plusJours(-40), heures: 3, mission: 'Après-midi jeux', validee: true, par }, { id: 'h-2', date: plusJours(-20), heures: 2.5, mission: 'Atelier créatif', validee: true, par }], rdv: [] },
+    { id: 'ac-2', type: 'civique', nom: 'Exemple', prenom: 'Samir', debut: plusJours(-100), fin: plusJours(25), clos: false, convention: { etat: 'asigner', echeance: '', ou: '' }, missions: 'Visites de convivialité et sorties', objectifs: 'Développer le lien avec les résident·es', pointsOrganisation: '', bilan: '', rdv: [{ id: 'r-1', date: plusJours(10), objet: 'Point à mi-parcours' }], heures: [] },
+    { id: 'ac-3', type: 'stagiaire', nom: 'Modèle', prenom: 'Inès', debut: plusJours(-10), fin: plusJours(40), clos: false, etablissement: 'Lycée (démonstration)', referent: 'Tuteur de l\'établissement', convention: { etat: 'signee', echeance: plusJours(40), ou: 'Dossier stagiaires' }, missions: 'Découverte du service', bilan: '', rdv: [], heures: [] }
+  ];
+  const seniorsLite = seniors.map(copieSeniorLite);
+  return { seniors, activites, inscriptions, seances, fiches, taches, contacts, echanges, conventions, materiel, emprunts, mouvements, portage, portageEchanges, parametres, accueils, seniorsLite };
 }

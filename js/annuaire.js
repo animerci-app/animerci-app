@@ -3,9 +3,10 @@
 // Les bénéficiaires restent dans l'écran « Personnes » (déjà proposés dans « Inscrire quelqu'un »).
 import { store } from './store.js';
 import { P } from './parametres.js';
-import { cleNom, libelleContact, trouverContact, nomComplet, nomAffiche, comparerPatronyme, normContact, separerNom, filtrer } from './logic.js';
+import { JOURS_PORTAGE, cleNom, libelleContact, trouverContact, nomComplet, nomAffiche, comparerPatronyme, normContact, separerNom, filtrer } from './logic.js';
 import { champRecherche, comboLire, comboFixer, itemContact, NOUVEAU } from './recherche.js';
-import { S, pret, chargement, $, esc, initiales, modal, closeModal, toast, confirmer, sauver, mettreCorbeille, render } from './ui.js';
+import { S, pret, chargement, $, esc, initiales, modal, closeModal, toast, confirmer, sauver, mettreCorbeille, render, aujourdhui } from './ui.js';
+const anCourant = () => Number(aujourdhui().slice(0, 4));
 
 const AVERT_PART = '<div class="note" style="margin:6px 0 10px"><b>✔ À écrire</b> : une information d\'organisation (« projets : dictée avec les CM2 », « à relancer en janvier »).<br><b>✘ À ne pas écrire</b> : toute information de santé, et le nom d\'une personne accompagnée.</div>';
 
@@ -87,7 +88,7 @@ function listeContacts() {
   if (q) { const ids = new Set(filtrer(rows.map(itemContact), q, 100000).liste.map(x => x.id)); rows = rows.filter(c => ids.has(c.id)); }
   if (!rows.length) return `<div class="card"><div class="empty"><b>${q ? 'Aucun résultat' : 'Aucun contact ici'}</b>${q ? 'Essayez un autre nom, un prénom ou un métier.' : 'Ajoutez-en avec le bouton, importez une liste, ou ajoutez directement depuis un formulaire (activité, tâche).'}</div></div>`;
   return rows.map(c => `<button class="cand" data-action="contact-form" data-id="${esc(c.id)}"><span class="av">${esc(initiales(nomComplet(c)))}</span>
-    <span style="flex:1"><b>${esc(nomAffiche(c))}</b><span class="why">${c.precision ? `<span class="pill p-rose">${esc(c.precision)}</span>` : ''}${c._derive ? '<span class="pill p-warn">à vérifier</span>' : ''}${c.service ? `<span class="pill p-ok">${esc(c.service)}</span>` : ''}${c.tel ? `<span class="pill p-bleu">${esc(c.tel)}</span>` : ''}${c.email ? `<span class="pill p-rose">${esc(c.email)}</span>` : ''}${c.note ? `<span class="sub">${esc(c.note)}</span>` : ''}</span></span>
+    <span style="flex:1"><b>${esc(nomAffiche(c))}</b><span class="why">${c.precision ? `<span class="pill p-rose">${esc(c.precision)}</span>` : ''}${c._derive ? '<span class="pill p-warn">à vérifier</span>' : ''}${c.service ? `<span class="pill p-ok">${esc(c.service)}</span>` : ''}${c.tel ? `<span class="pill p-bleu">${esc(c.tel)}</span>` : ''}${c.email ? `<span class="pill p-rose">${esc(c.email)}</span>` : ''}${c.note ? `<span class="sub">${esc(c.note)}</span>` : ''}${c.inactif ? '<span class="pill p-rose">inactif</span>' : ''}${(c.dispoJours || []).length ? `<span class="pill p-ok">${esc(c.dispoJours.slice().sort((x, y) => x - y).map(k => JOURS_PORTAGE[k].slice(0, 3).toLowerCase() + '.').join(' '))}</span>` : ''}${c.competences ? `<span class="sub">${esc(c.competences)}</span>` : ''}</span></span>
     <span class="pill p-warn">${esc(c.categorie || '—')}</span></button>`).join('');
 }
 export function annuaire() {
@@ -108,6 +109,7 @@ export function apresAnnuaire() { const r = $('#rech-ann'); if (r) r.oninput = (
 
 // Options d'une liste de Paramètres (la valeur déjà enregistrée reste proposée même si elle a été retirée de la liste)
 const optionsListe = (chemin, courant) => { const l = P(chemin); return ['', ...(courant && !l.includes(courant) ? [courant] : []), ...l].map(s => `<option value="${esc(s)}" ${s === (courant || '') ? 'selected' : ''}>${s ? esc(s) : '(aucun)'}</option>`).join(''); };
+const AVERT_BEN = '<div class="note" style="margin:6px 0 10px"><b>✔ À écrire</b> : des éléments d\'organisation, par exemple « aime animer les jeux de société », « disponible le mardi après-midi », « peut conduire pour les sorties ».<br><b>✘ À ne pas écrire</b> : toute information de santé ou de situation personnelle sensible. Un champ libre ne peut pas être contrôlé par l\'outil : la règle vaut pour tous.</div>';
 function contactForm(id) {
   const cats = P('annuaire.categories'), brut = id ? S.cache.contacts.find(x => x.id === id) : null;
   const c = brut ? normContact(brut) : { categorie: S.filtreContact && S.filtreContact !== 'Tous' ? S.filtreContact : cats[0], prenom: '' };
@@ -123,6 +125,14 @@ function contactForm(id) {
   <div class="two"><div class="field"><label for="c3">Téléphone</label><input id="c3" type="tel" value="${esc(c.tel || '')}"></div>
   <div class="field"><label for="c4">E-mail</label><input id="c4" type="email" value="${esc(c.email || '')}"></div></div>
   <div class="field"><label for="c5">Remarque</label><input id="c5" value="${esc(c.note || '')}"></div>
+  <details class="field" id="blocBen" ${c.competences || (c.dispoJours || []).length || c.dispoPrecision || c.benMissions || c.reunions || (c.remerciements || []).length || c.inactif ? 'open' : ''}><summary><b>Bénévolat</b> <small class="sub">(facultatif : compétences, disponibilités, missions, remerciement)</small></summary>
+    <div class="field" style="margin-top:8px"><label for="c14">Compétences et goûts</label><input id="c14" maxlength="200" value="${esc(c.competences || '')}" placeholder="Ex. : jeux de société, couture, conduite"></div>
+    <div class="field"><label>Disponibilités habituelles</label><div class="row" style="flex-wrap:wrap;gap:4px 14px">${JOURS_PORTAGE.map((j, k) => `<label class="chk" style="margin:0"><input type="checkbox" class="ben-jour" value="${k}" ${(c.dispoJours || []).includes(k) ? 'checked' : ''}> ${j}</label>`).join('')}</div>
+      <input id="c15" maxlength="160" value="${esc(c.dispoPrecision || '')}" placeholder="Précision (ex. : après-midi seulement, hors vacances)" style="margin-top:6px"></div>
+    <div class="field"><label for="c16">Missions confiées</label><input id="c16" maxlength="300" value="${esc(c.benMissions || '')}" placeholder="Ex. : accueil du jeudi, accompagnement des sorties"></div>
+    <div class="field"><label for="c17">Réunions de bénévoles</label><input id="c17" maxlength="200" value="${esc(c.reunions || '')}" placeholder="Ex. : participe à la réunion de rentrée"></div>
+    <div class="field"><label>Remerciement annuel (cocher l'année où la personne a été remerciée)</label><div class="row" style="flex-wrap:wrap;gap:4px 14px">${[0, 1, 2].map(k => anCourant() - k).map(a => `<label class="chk" style="margin:0"><input type="checkbox" class="ben-rem" value="${a}" ${(c.remerciements || []).includes(a) ? 'checked' : ''}> ${a}</label>`).join('')}</div></div>
+    <label class="chk" style="margin:0 0 6px"><input type="checkbox" id="c18" ${c.inactif ? 'checked' : ''}> Ne plus compter comme bénévole actif (la fiche est conservée)</label>${AVERT_BEN}</details>
   <details class="field" ${c.service || c.partenariat || c.referent || c.projets || c.suite ? 'open' : ''}><summary><b>Suivi du partenariat</b> <small class="sub">(facultatif)</small></summary>
     <div class="two" style="margin-top:8px"><div class="field"><label for="c9">Service ou structure</label><select id="c9">${optionsListe('partenaires.services', c.service)}</select></div>
     <div class="field"><label for="c10">Type de partenariat</label><select id="c10">${optionsListe('partenaires.types', c.partenariat)}</select></div></div>
@@ -130,7 +140,7 @@ function contactForm(id) {
     <div class="field"><label for="c12">Projets communs</label><input id="c12" maxlength="300" value="${esc(c.projets || '')}"></div>
     <div class="field"><label for="c13">Suite à donner</label><input id="c13" maxlength="200" value="${esc(c.suite || '')}"></div>${AVERT_PART}</details>
   <div class="quick" style="margin-top:14px"><button class="btn" id="saveC">Enregistrer</button><button class="btn ghost" data-action="close">Annuler</button>${id ? '<button class="btn sec" data-action="part-fiche" data-id="' + esc(id) + '">Voir le suivi (échanges, conventions)</button><button class="btn ghost" id="delC" style="margin-left:auto">Supprimer</button>' : ''}</div>`);
-  const maj = () => { $('#c7z').style.display = $('#c8').checked ? 'none' : ''; }; $('#c8').onchange = maj; maj();
+  const maj = () => { $('#c7z').style.display = $('#c8').checked ? 'none' : ''; $('#blocBen').style.display = $('#c2').value === P('annuaire.rubriques.activiteBenevole') ? '' : 'none'; }; $('#c8').onchange = maj; $('#c2').onchange = maj; maj();
   $('#saveC').onclick = async () => {
     const nom = $('#c1').value.trim(); if (!nom) return toast('Le nom est nécessaire.');
     const organisme = $('#c8').checked, prenom = organisme ? '' : $('#c7').value.trim();
@@ -141,6 +151,12 @@ function contactForm(id) {
     if (memes.some(x => cleNom(x.precision) === cleNom(precision))) return toast(`${libelleContact({ nom, prenom, precision })} est déjà dans la liste « ${categorie} ».`);
     const doc = { ...(id ? { id } : {}), nom, prenom, organisme, precision, categorie, tel: $('#c3').value.trim(), email: $('#c4').value.trim(), note: $('#c5').value.trim(),
       service: $('#c9').value, partenariat: $('#c10').value, referent: $('#c11').value.trim(), projets: $('#c12').value.trim(), suite: $('#c13').value.trim() };
+    // Bénévolat (lot E) : lu seulement si la catégorie est celle des bénévoles ; sinon les valeurs déjà enregistrées sont conservées telles quelles
+    if (categorie === P('annuaire.rubriques.activiteBenevole')) {
+      const an = anCourant(), gardees = (c.remerciements || []).filter(a => a < an - 2 || a > an);
+      Object.assign(doc, { competences: $('#c14').value.trim(), dispoJours: [...document.querySelectorAll('.ben-jour:checked')].map(x => Number(x.value)), dispoPrecision: $('#c15').value.trim(), benMissions: $('#c16').value.trim(), reunions: $('#c17').value.trim(),
+        remerciements: [...gardees, ...[...document.querySelectorAll('.ben-rem:checked')].map(x => Number(x.value))].sort((x, y) => x - y), inactif: $('#c18').checked });
+    } else for (const k of ['competences', 'dispoJours', 'dispoPrecision', 'benMissions', 'reunions', 'remerciements', 'inactif']) if (c[k] !== undefined) doc[k] = c[k];
     const nid = await sauver('contacts', doc, 'Contact enregistré');
     if (id && libelleContact(c) !== libelleContact(doc)) await propager(c, { ...doc, id: nid });
     closeModal();

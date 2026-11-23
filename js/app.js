@@ -10,6 +10,9 @@ import * as part from './partenaires.js';
 import * as mat from './materiel.js';
 import * as adhs from './adhesions.js';
 import * as pg from './portage.js';
+import * as ac from './accueils.js';
+import * as ins from './inscrire.js';
+import * as L from './logic.js';
 import { installerRecherche, oublierRecents, champRecherche, itemPersonne, itemContact, itemActivite, AIDE_PERSONNE } from './recherche.js';
 import * as imp from './importer.js';
 import * as pwa from './pwa.js';
@@ -19,20 +22,22 @@ import * as pa from './parametres.js';
 import { P, moduleActif } from './parametres.js';
 
 const NAV = {
-  admin: [['home', 'Accueil', '⌂'], ['seniors', 'Personnes', '☺'], ['activites', 'Activités', '♥'], ['planning', 'Planning', '▦'], ['taches', 'Tâches', '✓'], ['materiel', 'Matériel', '▣'], ['bilans', 'Bilans', '▮'], ['annuaire', 'Annuaire', '☎'], ['partenaires', 'Partenaires', '⇄'], ['portage', 'Portage', '◉'], ['equipe', 'Équipe', '☻'], ['parametres', 'Paramètres', '⚙'], ['sauvegarde', 'Sécurité', '⛨']],
+  admin: [['home', 'Accueil', '⌂'], ['seniors', 'Personnes', '☺'], ['activites', 'Activités', '♥'], ['planning', 'Planning', '▦'], ['taches', 'Tâches', '✓'], ['materiel', 'Matériel', '▣'], ['bilans', 'Bilans', '▮'], ['annuaire', 'Annuaire', '☎'], ['partenaires', 'Partenaires', '⇄'], ['portage', 'Portage', '◉'], ['accueils', 'Accueils', '☼'], ['equipe', 'Équipe', '☻'], ['parametres', 'Paramètres', '⚙'], ['sauvegarde', 'Sécurité', '⛨']],
+  // Intervenant·e : ses activités et le planning ; bénévole : le planning. Matériel, Portage et Saisie des inscriptions s'ajoutent si l'administratrice a coché l'accès (Équipe).
   intervenant: [['activites', 'Mes activités', '♥'], ['planning', 'Planning', '▦'], ['materiel', 'Matériel', '▣'], ['portage', 'Portage', '◉']],
-  benevole: [['planning', 'Planning', '▦'], ['materiel', 'Matériel', '▣'], ['portage', 'Portage', '◉']],
+  benevole: [['planning', 'Planning', '▦'], ['materiel', 'Matériel', '▣'], ['portage', 'Portage', '◉'], ['inscrire', 'Inscriptions', '✎']],
   partenaire: [['mespart', 'Mes échanges', '⇄']]
 };
 // Modules facultatifs : masqués du menu quand l'administratrice les désactive (Paramètres)
-const FACULTATIFS = { taches: 'taches', bilans: 'bilans', portage: 'portage' };
-const navPour = role => (NAV[role] || []).filter(([k]) => !(k in FACULTATIFS) || moduleActif(FACULTATIFS[k]));
+const FACULTATIFS = { taches: 'taches', bilans: 'bilans', portage: 'portage', accueils: 'accueils' };
+const ACCES_NAV = { materiel: 'materiel', portage: 'portage', inscrire: 'inscriptions' };
+export const navPour = user => ((user && NAV[user.role]) || []).filter(([k]) => (!(k in FACULTATIFS) || moduleActif(FACULTATIFS[k])) && (user.role === 'admin' || !(k in ACCES_NAV) || L.accesActif(user, ACCES_NAV[k], aujourdhui())));
 const ACCUEIL = { admin: 'home', intervenant: 'activites', benevole: 'planning', partenaire: 'mespart' };
 
 /* ---------- Données ---------- */
 // Chargement à la demande : on ne s'abonne qu'à ce que l'écran ouvert affiche (voir donnees.js). Chaque abonnement n'est créé qu'une fois.
 let unsubs = [], parts = {}, actifs = new Set(), minuteurPurge = null, rendu = false;
-const COLS_ECOUTE = COLS.concat(['users', 'corbeille', 'journal', 'parametres', 'contacts', 'echanges', 'conventions', 'materiel', 'emprunts', 'mouvements', 'portage', 'portageEchanges']);
+const COLS_ECOUTE = COLS.concat(['users', 'corbeille', 'journal', 'parametres', 'contacts', 'echanges', 'conventions', 'materiel', 'emprunts', 'mouvements', 'portage', 'portageEchanges', 'accueils', 'seniorsLite']);
 function planifierRendu() { if (rendu) return; rendu = true; Promise.resolve().then(() => { rendu = false; render(); }); }
 function listen(col, key, filtre, opts) {
   unsubs.push(store.subscribe(col, (rows, err) => {
@@ -47,13 +52,15 @@ function listen(col, key, filtre, opts) {
 function synchroniser() {
   const u = S.user; if (!u || !u.role) return;
   const mes = (u.activites || []);
-  for (const b of besoins({ role: u.role, uid: u.uid, view: S.view, actId: S.actId, mois: S.moisPlan || { a: new Date().getFullYear(), m: new Date().getMonth() }, nbMois: S.nbMois, stat: S.stat, anPart: S.anPart, partId: S.partId, ongletMat: mat.ongletMat(), anMat: S.anMat, ongletPortage: pg.ongletPortage(), anPortage: S.anPortage, portageActif: moduleActif('portage'), matHisto: S.matHisto, matPersonnes: S.matPersonnes, horizonPeremption: ajouterJours(aujourdhui(), P('materiel.alertePeremptionJours')),
+  for (const b of besoins({ role: u.role, uid: u.uid, view: S.view, actId: S.actId, mois: S.moisPlan || { a: new Date().getFullYear(), m: new Date().getMonth() }, nbMois: S.nbMois, stat: S.stat, anPart: S.anPart, partId: S.partId, ongletMat: mat.ongletMat(), anMat: S.anMat, ongletPortage: pg.ongletPortage(), anPortage: S.anPortage, portageActif: moduleActif('portage'), acces: { materiel: L.accesActif(u, 'materiel', aujourdhui()), portage: L.accesActif(u, 'portage', aujourdhui()), inscriptions: L.accesActif(u, 'inscriptions', aujourdhui()) }, inscrActId: S.inscrActId, decembre: aujourdhui().slice(5, 7) === '12' && moduleActif('accueils'), matHisto: S.matHisto, matPersonnes: S.matPersonnes, horizonPeremption: ajouterJours(aujourdhui(), P('materiel.alertePeremptionJours')),
     rechGlobale: S.rechGlobale, onglet: sec.ongletCourant(), auj: aujourdhui(), horizonSorties: ajouterJours(aujourdhui(), 60), activites: S.cache.activites, mesActivites: mes })) {
     const k = b.col + '|' + b.key; if (actifs.has(k)) continue;
     actifs.add(k); listen(b.col, b.key, b.filtre, b.opts);
   }
   // Portage : l'administratrice met les documents des bénéficiaires en accord avec les fiches à chaque ouverture de l'écran
   if (u.role === 'admin' && S.view === 'portage') pg.synchroniser();
+  // Personnes : l'administratrice tient à jour la copie restreinte lue par les bénévoles qui saisissent les inscriptions (une écriture par fiche modifiée)
+  if (u.role === 'admin' && S.view === 'seniors') ins.synchroLite();
   // Écran « Activités » : places prises par activité, comptées côté serveur (beaucoup moins de lectures que de tout télécharger)
   // Accueil : alertes « adhésions » et « fiches à vérifier » comptées côté serveur (2 lectures, aucune fiche téléchargée)
   if (u.role === 'admin' && S.view === 'home' && S.compteursFichesNav !== S.navId) { S.compteursFichesNav = S.navId; const nav = S.navId; adhs.compterFiches().then(r => { if (nav === S.navId && S.user) { S.compteursFiches = r; planifierRendu(); } }).catch(e => console.warn('comptage des fiches', e)); }
@@ -76,7 +83,7 @@ function demarrer() {
   if (S.user && S.user.role === 'admin') minuteurPurge = setTimeout(sec.purger, 5000);
   synchroniser();
 }
-function arreter() { clearTimeout(minuteurPurge); unsubs.forEach(u => u()); unsubs = []; parts = {}; actifs = new Set(); S.pret = new Set(); S.rechGlobale = false; S.matPersonnes = false; S.compteursFiches = null; S.compteursFichesNav = -1; S.ongletSen = 'liste'; S.anAdh = 0; S.fAdh = 'encours'; S.rechAdh = ''; S.migrationFaite = false; S.portageSyncNav = -1; S.ongletPortage = 'beneficiaires'; S.fPortage = 'actifs'; S.rechPortage = ''; S.anPortage = 0; S.fEchPortage = 'tous'; S.rechEchPortage = ''; S.matHisto = null; S.ongletMat = 'inventaire'; S.fEmprunt = 'encours'; S.anMat = ''; S.rechMat = ''; S.fCatMat = ''; S.fEmpMat = ''; S.fSaisonMat = ''; S.fSigMat = false; S.compteurs = {}; S.compteursNav = -1; COLS_ECOUTE.forEach(c => { S.cache[c] = []; }); }
+function arreter() { clearTimeout(minuteurPurge); unsubs.forEach(u => u()); unsubs = []; parts = {}; actifs = new Set(); S.pret = new Set(); S.rechGlobale = false; S.matPersonnes = false; S.compteursFiches = null; S.compteursFichesNav = -1; S.ongletSen = 'liste'; S.anAdh = 0; S.fAdh = 'encours'; S.inscrActId = null; S.inscrQ = ''; S.ongletAccueils = null; S.liteErreur = false; S.acClos = false; S.rechAdh = ''; S.migrationFaite = false; S.portageSyncNav = -1; S.ongletPortage = 'beneficiaires'; S.fPortage = 'actifs'; S.rechPortage = ''; S.anPortage = 0; S.fEchPortage = 'tous'; S.rechEchPortage = ''; S.matHisto = null; S.ongletMat = 'inventaire'; S.fEmprunt = 'encours'; S.anMat = ''; S.rechMat = ''; S.fCatMat = ''; S.fEmpMat = ''; S.fSaisonMat = ''; S.fSigMat = false; S.compteurs = {}; S.compteursNav = -1; COLS_ECOUTE.forEach(c => { S.cache[c] = []; }); }
 
 /* ---------- Écrans ---------- */
 function ecranConnexion() {
@@ -97,7 +104,7 @@ function ecranSansRole() {
   ${S.user.erreur ? `<div class="err">${esc(S.user.erreur)}</div>` : ''}<button class="btn" data-action="logout">Se déconnecter</button></div></div>`;
 }
 function nav() {
-  const items = navPour(S.user.role);
+  const items = navPour(S.user);
   const courante = S.view === 'activite' ? 'activites' : S.view;
   return `<div class="brand"><img src="icons/icon-192.png" alt="" width="34" height="34">${esc(P('nomOutil'))}</div>` + (S.user.role === 'admin' ? '<button class="nav-btn" data-action="rech-globale" style="background:rgba(255,255,255,.14)"><span aria-hidden="true" style="width:20px;text-align:center">⌕</span><span>Chercher</span></button>' : '') + items.map(([k, l, ic]) =>
     `<button class="nav-btn" data-action="nav" data-v="${k}" ${courante === k ? 'aria-current="page"' : ''}><span aria-hidden="true" style="width:20px;text-align:center">${ic}</span><span>${l}</span></button>`).join('') +
@@ -105,7 +112,7 @@ function nav() {
     `<button class="nav-btn nav-compte" data-action="compte"><span aria-hidden="true" style="width:20px;text-align:center">☰</span><span>Compte</span></button>` +
     `<div class="foot"><div>${esc(S.user.nom)}</div><div style="font-size:12px;opacity:.7">Version ${VERSION}</div>${MODE_REEL ? '<button class="nav-btn" style="padding:6px 0;font-size:13px" data-action="mdp-form">Mon mot de passe</button>' : ''}${pwa.boutonInstaller()}<button class="nav-btn" style="padding:6px 0" data-action="logout">Se déconnecter</button>${MODE_REEL ? '' : '<button class="nav-btn" style="padding:6px 0;font-size:13px" data-action="reset-demo">Remettre les données de démonstration</button>'}</div>`;
 }
-const VUES = { home: core.accueil, seniors: core.seniors, taches: core.taches, planning: core.planning, bilans: core.bilans, activites: act.activites, activite: act.activite, annuaire: ann.annuaire, partenaires: part.partenaires, mespart: part.espacePartenaire, materiel: mat.materiel, portage: pg.portage, equipe: eq.equipe, sauvegarde: sec.securite, parametres: pa.parametres };
+const VUES = { home: core.accueil, seniors: core.seniors, taches: core.taches, planning: core.planning, bilans: core.bilans, activites: act.activites, activite: act.activite, annuaire: ann.annuaire, partenaires: part.partenaires, mespart: part.espacePartenaire, materiel: mat.materiel, portage: pg.portage, accueils: ac.accueils, inscrire: ins.inscrire, equipe: eq.equipe, sauvegarde: sec.securite, parametres: pa.parametres };
 
 setRender(() => {
   synchroniser();
@@ -114,7 +121,7 @@ setRender(() => {
   if (!S.user) { side.innerHTML = ''; side.style.display = 'none'; document.querySelector('.app').style.display = 'block'; main.innerHTML = ecranConnexion(); return; }
   if (!S.user.role) { side.style.display = 'none'; main.innerHTML = ecranSansRole(); return; }
   document.querySelector('.app').style.display = ''; side.style.display = '';
-  const autorisees = navPour(S.user.role).map(x => x[0]).concat(['admin', 'intervenant'].includes(S.user.role) ? ['activite'] : []);
+  const autorisees = navPour(S.user).map(x => x[0]).concat(['admin', 'intervenant'].includes(S.user.role) ? ['activite'] : []);
   if (!autorisees.includes(S.view)) S.view = ACCUEIL[S.user.role];
   side.innerHTML = nav();
   const faible = MODE_REEL && S.mdpLongueur && S.mdpLongueur < P('securite.motDePasseMin') ? `<div class="err" role="alert" style="background:#fff6e0;border-color:#e0b060;color:#5a3a00"><b>Votre mot de passe est trop court</b> (minimum ${P('securite.motDePasseMin')} caractères). <button class="btn sec" data-action="mdp-form" style="margin-left:8px">Le changer maintenant</button></div>` : '';
@@ -124,12 +131,13 @@ setRender(() => {
   if (S.view === 'partenaires') part.apresPartenaires();
   if (S.view === 'materiel') mat.apresMateriel();
   if (S.view === 'portage') pg.apresPortage();
+  if (S.view === 'inscrire') ins.apresInscrire();
   if (S.view === 'sauvegarde') sec.apresSecurite();
 });
 
 /* ---------- Événements ---------- */
 const actions = {
-  ...core.actions, ...act.actions, ...eq.actions, ...ann.actions, ...part.actions, ...mat.actions, ...pg.actions, ...adhs.actions, ...sec.actions, ...pa.actions, ...imp.actions, ...pwa.actions,
+  ...core.actions, ...act.actions, ...eq.actions, ...ann.actions, ...part.actions, ...mat.actions, ...pg.actions, ...ac.actions, ...ins.actions, ...adhs.actions, ...sec.actions, ...pa.actions, ...imp.actions, ...pwa.actions,
   'rech-globale': () => rechGlobale(),
   close: () => closeModal(),
   compte: () => {
@@ -176,7 +184,7 @@ async function rechGlobale() {
   <p class="sub">Choisissez un résultat pour ouvrir sa fiche.</p>`);
   const champ = $('#rg'); if (champ) champ.focus();
 }
-const changes = { ...core.changes, ...act.changes, ...ann.changes, ...part.changes, ...mat.changes, ...pg.changes };
+const changes = { ...core.changes, ...act.changes, ...ann.changes, ...part.changes, ...mat.changes, ...pg.changes, ...ac.changes, ...ins.changes };
 
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-action]'); if (!el || el.tagName === 'INPUT' && el.type === 'checkbox') return;

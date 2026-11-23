@@ -8,6 +8,10 @@
   const role = uid => (F.db.users && F.db.users[uid] || {}).role || '';
   const acts = uid => (F.db.users && F.db.users[uid] || {}).activites || [];
   const exists = uid => !!(F.db.users && F.db.users[uid]);
+  // Accès provisoires (v1.20.0) : même logique que la fonction acces() de firestore.rules (jour du serveur en UTC)
+  const dateDuJour = () => Number(new Date().toISOString().slice(0, 10).replace(/-/g, ''));
+  const acces = (uid, m) => { const p = (F.db.users && F.db.users[uid]) || {}; return exists(uid) && ['intervenant', 'benevole'].includes(p.role) && !!p.acces && p.acces[m] === true && (!('accesFin' in p) || !p.accesFin || p.accesFin >= dateDuJour()); };
+  const accesInscr = uid => role(uid) === 'benevole' && acces(uid, 'inscriptions');
   function permis(op, col, data, newData, uid, requete) {
     if (!uid) return false;
     const r = exists(uid) ? role(uid) : '', admin = r === 'admin';
@@ -19,16 +23,21 @@
         if (admin) return true; const mien = d => r === 'partenaire' && d && d.parUid === uid && d.partenaireId === (F.db.users[uid] || {}).partenaireId && d.interne !== true;
         if (op === 'read') return r === 'partenaire' && data.parUid === uid; if (op === 'create') return mien(newData); if (op === 'update') return mien(data) && mien(newData); return false; }
       case 'activites': return op === 'read' ? ['admin', 'intervenant', 'benevole'].includes(r) : admin;
-      case 'inscriptions': return op === 'read' ? (admin || sienne(data.activiteId)) : admin;
+      case 'inscriptions':
+        if (op === 'read') return admin || sienne(data.activiteId) || accesInscr(uid);
+        if (op === 'create') return admin || (accesInscr(uid) && ['inscrit', 'attente'].includes(newData.statut) && ['activiteId', 'seniorId', 'par'].every(k => k in newData));
+        return admin;
+      case 'seniorsLite': return admin || (op === 'read' && accesInscr(uid));
+      case 'accueils': return admin;
       case 'seances':
         if (op === 'read') return admin || sienne(data.activiteId);
         if (admin) return true;
         if (op === 'create') return sienne(newData.activiteId) && newData.valide !== true;
         if (op === 'update') return sienne(data.activiteId) && data.valide !== true && newData.valide !== true && newData.activiteId === data.activiteId;
         return false;
-      case 'portage': case 'portageEchanges': return ['admin', 'intervenant', 'benevole'].includes(r) ? (op !== 'delete' || admin) : false;
-      case 'materiel': case 'emprunts': return ['admin', 'intervenant', 'benevole'].includes(r) ? (op !== 'delete' || admin) : false;
-      case 'mouvements': return op === 'read' || op === 'create' ? ['admin', 'intervenant', 'benevole'].includes(r) : op === 'update' ? false : admin;
+      case 'portage': case 'portageEchanges': return admin || acces(uid, 'portage') ? (op !== 'delete' || admin) : false;
+      case 'materiel': case 'emprunts': return admin || acces(uid, 'materiel') ? (op !== 'delete' || admin) : false;
+      case 'mouvements': return op === 'read' || op === 'create' ? admin || acces(uid, 'materiel') : op === 'update' ? false : admin;
       case 'parametres': return op === 'read' ? ['admin', 'intervenant', 'benevole', 'partenaire'].includes(r) : admin;
       case 'journal': return op === 'create' ? ['admin', 'intervenant', 'benevole', 'partenaire'].includes(r) : (op !== 'update' && admin);
       default: return false;
@@ -87,9 +96,12 @@
         let autorise;
         if (q.col === 'activites') autorise = ['admin', 'intervenant', 'benevole'].includes(r);
         else if (q.col === 'parametres') autorise = ['admin', 'intervenant', 'benevole', 'partenaire'].includes(r);
-        else if (['materiel', 'emprunts', 'mouvements', 'portage', 'portageEchanges'].includes(q.col)) autorise = ['admin', 'intervenant', 'benevole'].includes(r);
+        else if (['materiel', 'emprunts', 'mouvements'].includes(q.col)) autorise = r === 'admin' || acces(uid, 'materiel');
+        else if (['portage', 'portageEchanges'].includes(q.col)) autorise = r === 'admin' || acces(uid, 'portage');
+        else if (q.col === 'seniorsLite') autorise = r === 'admin' || accesInscr(uid);
         else if (q.col === 'echanges') autorise = r === 'admin' || (r === 'partenaire' && q.filtres.some(w => w.f === 'parUid' && w.op === '==' && w.v === uid));
-        else if (['inscriptions', 'seances'].includes(q.col)) autorise = r === 'admin' || (r === 'intervenant' && q.filtres.some(w => w.f === 'activiteId' && w.op === '==' && acts(uid).includes(w.v)));
+        else if (q.col === 'inscriptions') autorise = r === 'admin' || accesInscr(uid) || (r === 'intervenant' && q.filtres.some(w => w.f === 'activiteId' && w.op === '==' && acts(uid).includes(w.v)));
+        else if (q.col === 'seances') autorise = r === 'admin' || (r === 'intervenant' && q.filtres.some(w => w.f === 'activiteId' && w.op === '==' && acts(uid).includes(w.v)));
         else if (q.col === 'users') autorise = r === 'admin' || (uid && q.filtres.length === 0 && false);
         else autorise = r === 'admin';
         if (!autorise) { F.denied.push('liste ' + q.col + ' par ' + (r || 'sans rôle')); return ko && ko(deny('liste ' + q.col)); }

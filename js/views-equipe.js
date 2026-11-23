@@ -1,7 +1,7 @@
 // Écran « Équipe » (administratrice uniquement) : créer des accès, choisir le rôle et les activités.
 import { store, MODE_REEL } from './store.js';
 import * as L from './logic.js';
-import { S, pret, chargement, $, esc, initiales, modal, closeModal, toast, confirmer, sauver } from './ui.js';
+import { S, pret, chargement, $, esc, initiales, modal, closeModal, toast, confirmer, sauver, aujourdhui } from './ui.js';
 
 const ROLES = { admin: 'Administratrice', intervenant: 'Intervenant·e', benevole: 'Bénévole', partenaire: 'Partenaire (journal de ses échanges)' };
 const CLS = { admin: 'p-bleu', intervenant: 'p-rose', benevole: 'p-warn', partenaire: 'p-ok' };
@@ -16,11 +16,11 @@ export function equipe() {
       <span style="flex:1"><b>${esc(u.nom || u.email)}</b>${u.id === S.user.uid ? ' <span class="sub">(vous)</span>' : ''}
       <span class="why"><span class="pill ${CLS[u.role] || 'p-warn'}">${ROLES[u.role] || 'Sans rôle'}</span>
       ${u.email ? `<span class="pill p-rose">${esc(u.email)}</span>` : ''}
-      ${acts.map(n => `<span class="pill p-bleu">${esc(n)}</span>`).join('')}</span></span></button>`;
+      ${acts.map(n => `<span class="pill p-bleu">${esc(n)}</span>`).join('')}${L.resumeAcces(u, aujourdhui()).map(t => `<span class="pill p-warn">${esc(t)}</span>`).join('')}</span></span></button>`;
   }).join('') : '<div class="empty"><b>Aucun accès créé</b>Ajoutez la première personne avec le bouton en haut.</div>';
   return `<div class="top"><div><h1>Équipe</h1><p>Qui peut se connecter, et ce qu'elle ou il voit.</p></div>
     <div class="quick"><button class="btn" data-action="equipe-form">+ Ajouter une personne</button></div></div>
-    <div class="card" style="margin-bottom:14px"><p class="sub" style="margin:0"><b>Administratrice</b> : tout. <b>Intervenant·e</b> : uniquement les inscrits et les appels de ses activités (elle ou il ne peut pas valider). <b>Bénévole</b> : le planning seulement. <b>Matériel</b> : l'administratrice, les intervenant·es et les bénévoles consultent et saisissent le matériel, les réserves et les emprunts (la suppression et les exports restent à l'administratrice).</p></div>
+    <div class="card" style="margin-bottom:14px"><p class="sub" style="margin:0"><b>Administratrice</b> : tout. <b>Intervenant·e</b> : uniquement les inscrits et les appels de ses activités (elle ou il ne peut pas valider). <b>Bénévole</b> : le planning seulement. <b>Accès provisoires</b> : pour une personne de l'équipe, cochez Matériel, Portage de repas ou (bénévoles seulement) Saisie des inscriptions, avec une date de fin facultative. Sans case cochée, une intervenante ou un bénévole ne voit que ce qui précède. La suppression, les exports et les paramètres restent à l'administratrice.</p></div>
     ${liste}`;
 }
 
@@ -37,29 +37,40 @@ function formulaire(id) {
       ${acts.length ? acts.map(a => `<label class="chk" style="margin:4px 0"><input type="checkbox" class="eact" value="${esc(a.id)}" ${(u.activites || []).includes(a.id) ? 'checked' : ''}> ${esc(a.nom)}</label>`).join('') : '<p class="sub">Aucune activité pour le moment : créez-les d\'abord dans « Activités ».</p>'}</div>
     <div id="blocPart" class="field"><label for="e4">Partenaire concerné <small class="sub">(fiche de l'Annuaire)</small></label><select id="e4"><option value="">(choisir)</option>${[...S.cache.contacts].map(c => L.normContact(c)).sort(L.comparerPatronyme).map(c => `<option value="${esc(c.id)}" ${u.partenaireId === c.id ? 'selected' : ''}>${esc(L.libelleContact(c))}${c.categorie ? ' (' + esc(c.categorie) + ')' : ''}</option>`).join('')}</select>
       <p class="sub" style="margin:4px 0 0">Ce compte voit uniquement un écran « Mes échanges » : il saisit et relit ses propres échanges avec le service. Il ne voit ni les personnes, ni l'Annuaire, ni les activités. Retirez l'accès quand l'essai est terminé.</p></div>
+    <div id="blocAcces" class="field"><label>Accès provisoires <small class="sub">(cochez ce que la personne peut utiliser en plus)</small></label>
+      <label class="chk" style="margin:4px 0"><input type="checkbox" id="ea-materiel" ${u.acces && u.acces.materiel ? 'checked' : ''}> Matériel (inventaire, réserves, emprunts)</label>
+      <label class="chk" style="margin:4px 0"><input type="checkbox" id="ea-portage" ${u.acces && u.acces.portage ? 'checked' : ''}> Portage de repas (bénéficiaires, échanges avec le prestataire)</label>
+      <label class="chk" id="ea-inscr-l" style="margin:4px 0"><input type="checkbox" id="ea-inscriptions" ${u.acces && u.acces.inscriptions ? 'checked' : ''}> Saisie des inscriptions reçues sur papier ou par téléphone (liste restreinte : nom, prénom, statut, cotisation à régler)</label>
+      <div class="field" style="max-width:240px;margin-top:8px"><label for="ea-fin">Jusqu'au <small class="sub">(facultatif)</small></label><input id="ea-fin" type="date" value="${esc(u.accesJusqu || '')}"></div>
+      <p class="sub" style="margin:4px 0 0">Sans date, l'accès dure tant que la case est cochée. Avec une date, il s'arrête tout seul après ce jour. Vous pouvez décocher à tout moment. Une personne déjà connectée voit le changement à sa prochaine ouverture de l'application. Intervenant·es : la saisie des inscriptions n'est pas proposée (elles ne renseignent que la présence ou l'absence).</p></div>
     ${id ? '' : `<p class="sub">${MODE_REEL ? 'Un e-mail est envoyé à cette adresse pour que la personne choisisse son mot de passe.' : 'Mode démonstration : aucun e-mail n\'est envoyé.'}</p>`}
     ${moi ? '<p class="sub">Vous ne pouvez pas modifier votre propre rôle (protection contre le verrouillage).</p>' : ''}
     <div class="quick" style="margin-top:14px"><button class="btn" id="saveEq">Enregistrer</button><button class="btn ghost" data-action="close">Annuler</button>
     ${id && !moi ? `<button class="btn ghost" id="mdpEq" style="margin-left:auto">Renvoyer le lien de mot de passe</button><button class="btn ghost" id="delEq">Retirer l'accès</button>` : ''}</div>`);
-  const maj = () => { $('#blocActs').style.display = $('#e3').value === 'intervenant' ? 'block' : 'none'; $('#blocPart').style.display = $('#e3').value === 'partenaire' ? 'block' : 'none'; };
+  const maj = () => { $('#blocActs').style.display = $('#e3').value === 'intervenant' ? 'block' : 'none'; $('#blocPart').style.display = $('#e3').value === 'partenaire' ? 'block' : 'none';
+    const r = $('#e3').value; $('#blocAcces').style.display = r === 'intervenant' || r === 'benevole' ? 'block' : 'none'; $('#ea-inscr-l').style.display = r === 'benevole' ? '' : 'none'; };
   $('#e3').onchange = maj; maj();
   $('#saveEq').onclick = async () => {
     const nom = $('#e1').value.trim(); if (!nom) return toast('Indiquez un nom.');
     const role = moi ? 'admin' : $('#e3').value;
     const activites = role === 'intervenant' ? [...document.querySelectorAll('.eact:checked')].map(c => c.value) : [];
     const partenaireId = role === 'partenaire' ? $('#e4').value : '';
+    const avecAcces = role === 'intervenant' || role === 'benevole';
+    const jusqu = avecAcces ? $('#ea-fin').value : '';
+    if (jusqu && !/^\d{4}-\d{2}-\d{2}$/.test(jusqu)) return toast('La date de fin d\'accès est invalide.');
+    const acces = L.champsAcces(avecAcces ? { materiel: $('#ea-materiel').checked, portage: $('#ea-portage').checked, inscriptions: role === 'benevole' && $('#ea-inscriptions').checked } : {}, jusqu);
     if (role === 'partenaire' && !partenaireId) return toast('Choisissez le partenaire concerné.');
     const cp = partenaireId ? S.cache.contacts.find(c => c.id === partenaireId) : null, partenaireNom = cp ? L.libelleContact(L.normContact(cp)) : '';
     const btn = $('#saveEq'); btn.disabled = true;
     try {
       if (id) {
-        await sauver('users', { id, nom, role, activites, partenaireId, partenaireNom }, 'Accès mis à jour');
+        await sauver('users', { id, nom, role, activites, partenaireId, partenaireNom, ...acces }, 'Accès mis à jour');
       } else {
         const email = $('#e2').value.trim().toLowerCase();
         if (!/^\S+@\S+\.\S+$/.test(email)) { btn.disabled = false; return toast('Adresse e-mail invalide.'); }
         if (S.cache.users.some(x => (x.email || '').toLowerCase() === email)) { btn.disabled = false; return toast('Cette adresse a déjà un accès.'); }
         const uid = await store.creerCompte(email);
-        await sauver('users', { id: uid, nom, email, role, activites, partenaireId, partenaireNom }, MODE_REEL ? 'Accès créé : un e-mail a été envoyé' : 'Accès créé (démonstration)');
+        await sauver('users', { id: uid, nom, email, role, activites, partenaireId, partenaireNom, ...acces }, MODE_REEL ? 'Accès créé : un e-mail a été envoyé' : 'Accès créé (démonstration)');
       }
       closeModal();
     } catch (e) {

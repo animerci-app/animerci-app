@@ -6,8 +6,11 @@ rules_version = '2';
 //                   peut enregistrer un appel mais PAS le valider
 //  - benevole     : lit uniquement les activités (planning)
 //  - partenaire   : (accès ouvert par l'administratrice, p. ex. pour un essai) lit et saisit SES propres échanges, rien d'autre
-//  - matériel (v1.17.0) : l'administratrice, les intervenant·es et les bénévoles lisent et saisissent le matériel, les emprunts et les mouvements de stock ; seule l'administratrice supprime
-//  - portage (v1.19.0) : l'administratrice, les intervenant·es et les bénévoles lisent et saisissent le suivi des bénéficiaires du portage de repas et les échanges avec le prestataire ; seule l'administratrice supprime
+//  - matériel (v1.17.0, accès à cocher depuis la v1.20.0) : l'administratrice, et les intervenant·es et bénévoles dont l'accès est coché, lisent et saisissent le matériel, les emprunts et les mouvements de stock ; seule l'administratrice supprime
+//  - portage (v1.19.0, accès à cocher depuis la v1.20.0) : l'administratrice, et les intervenant·es et bénévoles dont l'accès est coché, lisent et saisissent le suivi des bénéficiaires du portage de repas et les échanges avec le prestataire ; seule l'administratrice supprime
+//  - accès provisoires (v1.20.0) : l'administratrice coche, par compte intervenant·e ou bénévole, Matériel, Portage de repas ou (bénévoles seulement) Saisie des inscriptions, avec une date de fin facultative (champs acces et accesFin du profil).
+//                   Sans case cochée, ces rôles gardent leurs droits d'origine (planning ; activités et appels pour les intervenant·es).
+//  - accueils (v1.20.0) : jeunes adultes (bourse), services civiques, stagiaires : administratrice uniquement
 // Les comptes et leurs rôles (collection "users") sont créés dans la console Firebase.
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -19,6 +22,13 @@ service cloud.firestore {
     function estAdmin() { return role() == 'admin'; }
     function activitesAutorisees() { return aProfil() && 'activites' in profil() ? profil().activites : []; }
     function sienne(activiteId) { return role() == 'intervenant' && activiteId in activitesAutorisees(); }
+    // Accès provisoires (v1.20.0) : case cochée par l'administratrice sur le profil, et date de fin (AAAAMMJJ, 0 = sans date) non dépassée. Le jour est celui du serveur (UTC).
+    function dateDuJour() { return request.time.year() * 10000 + request.time.month() * 100 + request.time.day(); }
+    function acces(m) {
+      return aProfil() && role() in ['intervenant', 'benevole'] && 'acces' in profil() && profil().acces.get(m, false) == true
+        && (!('accesFin' in profil()) || profil().accesFin == 0 || profil().accesFin >= dateDuJour());
+    }
+    function accesInscriptions() { return role() == 'benevole' && acces('inscriptions'); }
 
     // Profil : chacun lit le sien ; seul l'admin lit/écrit les autres.
     match /users/{uid} {
@@ -37,9 +47,21 @@ service cloud.firestore {
 
     // Inscriptions : lecture intervenant limitée à ses activités (la requête doit filtrer sur activiteId)
     match /inscriptions/{id} {
-      allow read: if estAdmin() || sienne(resource.data.activiteId);
+      allow read: if estAdmin() || sienne(resource.data.activiteId) || accesInscriptions();
+      // Saisie d'une inscription reçue sur papier ou par téléphone (bénévole coché) : création seulement, statut « inscrit » ou « en attente » ; ni modification ni suppression
+      allow create: if estAdmin() || (accesInscriptions() && request.resource.data.statut in ['inscrit', 'attente'] && request.resource.data.keys().hasAll(['activiteId', 'seniorId', 'par']));
+      allow update, delete: if estAdmin();
+    }
+
+    // Personnes, version restreinte (v1.20.0) : nom, prénom, nom de jeune fille, statut, année de naissance, années de cotisation réglées. Ni téléphone, ni adresse, ni date de naissance complète.
+    // Recopiée par l'administratrice à l'ouverture de « Personnes » ; lue par les bénévoles dont l'accès « Saisie des inscriptions » est coché.
+    match /seniorsLite/{id} {
+      allow read: if estAdmin() || accesInscriptions();
       allow write: if estAdmin();
     }
+
+    // Accueils (v1.20.0) : jeunes adultes (bourse), services civiques, stagiaires. Aucune donnée de santé. Administratrice uniquement.
+    match /accueils/{id} { allow read, write: if estAdmin(); }
 
     // Séances / appels : l'intervenant enregistre mais ne valide pas
     match /seances/{id} {
@@ -79,7 +101,7 @@ service cloud.firestore {
     // Matériel, réserves, caisses de décorations, emprunts et mouvements de stock (v1.17.0). Aucune donnée de santé, aucune photo.
     // Toute l'équipe (admin, intervenant, bénévole) lit, crée et modifie : chaque ligne garde « saisi par ». Seule l'administratrice supprime (la corbeille est réservée à l'admin).
     // Le partenaire n'y a pas accès. Les mouvements de stock ne se modifient pas (historique).
-    function equipeMateriel() { return role() in ['admin', 'intervenant', 'benevole']; }
+    function equipeMateriel() { return estAdmin() || acces('materiel'); }
     match /materiel/{id} {
       allow read, create, update: if equipeMateriel();
       allow delete: if estAdmin();
@@ -97,7 +119,7 @@ service cloud.firestore {
     // Portage de repas (v1.19.0). Aucune donnée de santé : motifs d'organisation seulement.
     // Le document « portage » d'un bénéficiaire recopie le strict nécessaire de sa fiche (nom, sexe, année de naissance, jours de livraison) et son historique (début, interruptions, reprises, arrêt) :
     // l'équipe lit, crée et modifie (chaque événement garde « saisi par »), seule l'administratrice supprime. Le partenaire n'y a pas accès.
-    function equipePortage() { return role() in ['admin', 'intervenant', 'benevole']; }
+    function equipePortage() { return estAdmin() || acces('portage'); }
     match /portage/{id} {
       allow read, create, update: if equipePortage();
       allow delete: if estAdmin();

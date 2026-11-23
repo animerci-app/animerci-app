@@ -9,6 +9,7 @@ export function bornesMois(a, m) {
 }
 
 // c : { anPart (année affichée dans Partenaires), partId (fiche d'un partenaire ouverte), nbMois (planning : 1 à 3), horizonSorties (date limite pour l'alerte « fiches de sortie à compléter »), role, view, actId, mois:{a,m}, stat:{du,au}, onglet, auj, activites:[], mesActivites:[],
+//      acces ({materiel, portage, inscriptions} : accès actifs de l'équipe), inscrActId (activité choisie à l'écran de saisie des inscriptions), ongletAccueils, decembre (vrai en décembre), categorieBenevole,
 //      ongletPortage, anPortage (onglet et année du Portage), portageActif (module non désactivé),
 //      ongletMat (onglet du Matériel), anMat (année des emprunts rendus), matHisto (article dont l'historique est ouvert), matPersonnes (liste d'emprunteurs ouverte), horizonPeremption (date limite de l'alerte « péremption proche ») }
 export function besoins(c) {
@@ -16,10 +17,12 @@ export function besoins(c) {
   const add = (col, key, filtre, opts) => B.push({ col, key, filtre: filtre || null, opts: opts || null });
   if (!c.role) return B;
   add('parametres', 'all');
+  // Accès de l'équipe : l'administratrice a tout ; intervenant·es et bénévoles seulement ce que l'administratrice a coché (et dont la date de fin n'est pas passée)
+  const peut = m => c.role === 'admin' || !!(c.acces && c.acces[m]);
   // Matériel (lot A) : toute l'équipe (administratrice, intervenant·es, bénévoles) lit et saisit. Les emprunts non rendus sont toujours chargés (ils servent au « disponible » et aux retards) ;
   // les emprunts rendus de l'année seulement dans l'onglet Emprunts ; l'historique d'un article seulement à l'ouverture de cet historique.
   const materiel = () => {
-    if (c.view !== 'materiel') return;
+    if (c.view !== 'materiel' || !peut('materiel')) return;
     add('materiel', 'all'); add('emprunts', 'ouverts', ['rendu', '==', false]);
     if (c.ongletMat === 'emprunts') { const an = c.anMat || c.auj.slice(0, 4); add('emprunts', `rendus-${an}`, [['retourReel', '>=', `${an}-01-01`], ['retourReel', '<=', `${an}-12-31`]]); }
     if (c.matHisto) add('mouvements', 'm-' + c.matHisto, ['materielId', '==', c.matHisto]);
@@ -28,12 +31,18 @@ export function besoins(c) {
   // Portage de repas (lot B) : l'administratrice et l'équipe suivent les bénéficiaires (un document par bénéficiaire) ; les échanges avec le prestataire sont lus par année affichée.
   // L'administratrice charge aussi les fiches : l'ouverture du Portage met les documents en accord avec les fiches (nouveaux bénéficiaires, jours modifiés).
   const portage = () => {
-    if (c.view !== 'portage' || c.portageActif === false) return;
+    if (c.view !== 'portage' || c.portageActif === false || !peut('portage')) return;
     add('portage', 'all');
     if (c.ongletPortage === 'echanges') { const an = c.anPortage || c.auj.slice(0, 4); add('portageEchanges', `an-${an}`, [['date', '>=', `${an}-01-01`], ['date', '<=', `${an}-12-31`]]); }
     if (c.role === 'admin') add('seniors', 'all');
   };
-  if (c.role === 'benevole') { add('activites', 'all'); materiel(); portage(); return B; }
+  // Saisie des inscriptions reçues sur papier ou par téléphone (bénévoles cochés) : liste restreinte des personnes (seniorsLite) et inscriptions de l'activité choisie
+  const inscrire = () => {
+    if (c.view !== 'inscrire' || !peut('inscriptions') || c.role !== 'benevole') return;
+    add('seniorsLite', 'all');
+    if (c.inscrActId) add('inscriptions', c.inscrActId, ['activiteId', '==', c.inscrActId]);
+  };
+  if (c.role === 'benevole') { add('activites', 'all'); materiel(); portage(); inscrire(); return B; }
   if (c.role === 'intervenant') {
     add('activites', 'all'); materiel(); portage();
     for (const id of c.mesActivites || []) { add('inscriptions', id, ['activiteId', '==', id]); add('seances', id, ['activiteId', '==', id]); }
@@ -50,6 +59,8 @@ export function besoins(c) {
     add('inscriptions', 'attente', ['statut', '==', 'attente']);
     add('seances', 'avalider', ['valide', '==', false]);
     // Alertes « partenaires » : suites à donner, réunions prévues, conventions (petites listes)
+    // Alertes « accueils » (conventions, bilans, heures de la bourse) : les accueils non clos ; les bénévoles de l'Annuaire seulement en décembre (remerciements)
+    add('accueils', 'ouverts', ['clos', '==', false]); if (c.decembre) add('contacts', 'all');
     add('echanges', 'suites', ['suiteAFaire', '==', true]); add('echanges', 'prevus', ['etat', '==', 'prevu']); add('conventions', 'all');
     // Alertes « matériel » : seulement les articles concernés (stock bas, manquant, péremption proche) et les emprunts non rendus : requêtes d'égalité ou de plage sur un seul champ, sans index à créer
     if (c.horizonPeremption) { add('materiel', 'bas', ['bas', '==', true]); add('materiel', 'manquant', ['manquant', '==', true]); add('materiel', 'peremp-' + c.horizonPeremption, [['echeance', '>', '0'], ['echeance', '<=', c.horizonPeremption]]); add('emprunts', 'ouverts', ['rendu', '==', false]); }
@@ -69,6 +80,8 @@ export function besoins(c) {
     add('seances', `bilan-${du}-${au}`, [['date', '>=', du], ['date', '<=', au]]);
   }
   if (v === 'equipe') { add('users', 'all'); add('contacts', 'all'); }
+  // Accueils (lot E) : toutes les fiches (quelques dizaines) et l'Annuaire (bénévoles, pour les chiffres)
+  if (v === 'accueils') { add('accueils', 'all'); add('contacts', 'all'); }
   materiel(); portage();
   // Partenaires : l'annuaire, les conventions et les échanges de l'année affichée (+ ceux d'un partenaire si sa fiche est ouverte)
   if (v === 'partenaires') {

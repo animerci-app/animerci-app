@@ -32,6 +32,11 @@ export const DEFAUTS = {
     prestataire: '',
     motifs: ['Absence temporaire (vacances ou autre)', 'Changement de rythme de livraison', 'Demande de la personne ou de ses proches', 'Changement de lieu de vie', 'Fin du service à l\'initiative de la personne', 'Fin du service à l\'initiative du service', 'Autre motif d\'organisation']
   },
+  // Accueils (lot E) : jeunes adultes (bourse), services civiques, stagiaires. « États du dossier » = suivi administratif de la bourse (aucune information de santé).
+  accueils: {
+    etatsDossier: ['Dossier à constituer', 'Dossier déposé', 'Dossier validé', 'Bourse versée'],
+    objectifHeures: 50, montantBourse: 500, seuilRetardHeures: 10, alerteJours: 30
+  },
   // Matériel (lot A) : listes de choix, unités, délai d'alerte de péremption. Les « états » (bon, usé, à réparer, manquant, hors d'usage) sont fixes : les alertes en dépendent.
   materiel: {
     categories: ['Vaisselle', 'Assiettes', 'Verres', 'Tasses', 'Bols', 'Couverts', 'Plateaux', 'Nappes', 'Décorations', 'Matériel créatif', 'Matériel de loisirs', 'Équipements'],
@@ -48,10 +53,10 @@ export const DEFAUTS = {
   verification: { mois: 12 },
   securite: { joursCorbeille: 30, joursJournal: 365, rappelSauvegardeJours: 30, motDePasseMin: 12, horizonEmargementJours: 14 },
   // Modules facultatifs (le planning, les activités et les personnes sont toujours actifs)
-  modules: { taches: true, bilans: true, portage: true }
+  modules: { taches: true, bilans: true, portage: true, accueils: true }
 };
 // Bornes acceptées pour les nombres (une valeur hors bornes est ignorée au profit de la valeur par défaut)
-const BORNES = { 'adhesion.montantDefaut': [0, 1000], 'adhesion.relanceMois': [1, 12], 'verification.mois': [1, 36], 'securite.joursCorbeille': [1, 365], 'securite.joursJournal': [30, 1095], 'securite.rappelSauvegardeJours': [1, 365], 'securite.motDePasseMin': [8, 64], 'securite.horizonEmargementJours': [1, 90], 'partenaires.alerteJours': [1, 365], 'materiel.alertePeremptionJours': [1, 365] };
+const BORNES = { 'accueils.objectifHeures': [1, 1000], 'accueils.montantBourse': [0, 10000], 'accueils.seuilRetardHeures': [1, 200], 'accueils.alerteJours': [1, 365], 'adhesion.montantDefaut': [0, 1000], 'adhesion.relanceMois': [1, 12], 'verification.mois': [1, 36], 'securite.joursCorbeille': [1, 365], 'securite.joursJournal': [30, 1095], 'securite.rappelSauvegardeJours': [1, 365], 'securite.motDePasseMin': [8, 64], 'securite.horizonEmargementJours': [1, 90], 'partenaires.alerteJours': [1, 365], 'materiel.alertePeremptionJours': [1, 365] };
 
 const lire = (obj, chemin) => chemin.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
 export function P(chemin) {
@@ -95,6 +100,13 @@ export function parametres() {
   <div class="card" style="margin-bottom:14px"><h2 style="margin-top:0">Portage de repas</h2>
     <div class="field"><label for="p-pgp">Entreprise de restauration (prestataire)</label><input id="p-pgp" value="${esc(P('portage.prestataire'))}" placeholder="nom de l'entreprise qui livre les repas"><small class="sub">Proposé automatiquement dans les échanges avec le prestataire (Portage › Échanges). Il peut être corrigé échange par échange.</small></div>
     ${liste('p-pgm', 'portage.motifs', 'Motifs d\'interruption ou d\'arrêt', '<b>Une par ligne.</b> <b>✔ À mettre</b> : des motifs d\'organisation (« absence temporaire », « changement de rythme de livraison », « demande de la personne »). <b>✘ À ne pas mettre</b> : tout motif de santé (hospitalisation, maladie, décès…). L\'outil organise le service, il ne suit pas les soins.')}</div>
+  <div class="card" style="margin-bottom:14px"><h2 style="margin-top:0">Accueils (jeunes adultes, services civiques, stagiaires)</h2>
+    ${liste('p-aed', 'accueils.etatsDossier', 'États du dossier de la bourse', 'Une par ligne, dans l\'ordre de la démarche (ex. dossier à constituer, déposé, validé, bourse versée). Suivi administratif seulement.')}
+    <div class="two">${num('p-aoh', 'accueils.objectifHeures', 'Objectif d\'heures proposé (bourse)')}
+    ${num('p-amb', 'accueils.montantBourse', 'Montant de la bourse proposé (€)')}
+    ${num('p-ash', 'accueils.seuilRetardHeures', 'Alerte « en retard » à partir de (heures d\'écart)', 'Écart entre les heures validées et les heures attendues à ce jour (au prorata de la période de mission).')}
+    ${num('p-aaj', 'accueils.alerteJours', 'Alerte conventions et bilans avant l\'échéance (jours)')}</div>
+    <p class="sub" style="margin:0">✔ <b>À écrire</b> : des éléments d'organisation (missions, horaires, lieux, rendez-vous de suivi). ✘ <b>À ne pas écrire</b> : toute information de santé ou de situation personnelle sensible.</p></div>
   <div class="card" style="margin-bottom:14px"><h2 style="margin-top:0">Matériel et réserves</h2>
     ${liste('p-mca', 'materiel.categories', 'Catégories du matériel (inventaire)', 'Une par ligne. Les articles déjà créés gardent leur catégorie.')}
     ${liste('p-mcr', 'materiel.categoriesReserves', 'Catégories des réserves', 'Une par ligne (café, thé, boissons, fournitures…).')}
@@ -117,6 +129,7 @@ export function parametres() {
     <label class="chk" style="margin:4px 0"><input type="checkbox" id="p-m-taches" ${moduleActif('taches') ? 'checked' : ''}> Tâches et rappels</label>
     <label class="chk" style="margin:4px 0"><input type="checkbox" id="p-m-bilans" ${moduleActif('bilans') ? 'checked' : ''}> Bilans et statistiques</label>
     <label class="chk" style="margin:4px 0"><input type="checkbox" id="p-m-portage" ${moduleActif('portage') ? 'checked' : ''}> Portage de repas (accessible à l'administratrice et à l'équipe)</label>
+    <label class="chk" style="margin:4px 0"><input type="checkbox" id="p-m-accueils" ${moduleActif('accueils') ? 'checked' : ''}> Accueils : jeunes adultes (bourse), services civiques, stagiaires (administratrice seule)</label>
     <p class="sub" style="margin:6px 0 0">Un module désactivé disparaît du menu ; ses données restent conservées.</p></div>
   <div class="quick"><button class="btn" data-action="param-save">Enregistrer les paramètres</button><button class="btn ghost" data-action="param-reset">Revenir aux valeurs d'origine</button></div>`;
 }
@@ -125,8 +138,8 @@ export const actions = {
   'param-save': async () => {
     if (!peutAdmin()) return;
     const cats = lignes('#p-cats'), bud = lignes('#p-bud'), mob = lignes('#p-mob'), ann = lignes('#p-ann'), psv = lignes('#p-psv'), pty = lignes('#p-pty');
-    const mdr = lignes('#p-mdr'), mca = lignes('#p-mca'), mcr = lignes('#p-mcr'), mem = lignes('#p-mem'), msa = lignes('#p-msa'), mun = lignes('#p-mun'), pgm = lignes('#p-pgm');
-    if (!cats.length || !bud.length || !mob.length || !ann.length || !psv.length || !pty.length || !mca.length || !mcr.length || !mem.length || !msa.length || !mun.length || !mdr.length || !pgm.length) return toast('Chaque liste doit contenir au moins un choix.');
+    const aed = lignes('#p-aed'), mdr = lignes('#p-mdr'), mca = lignes('#p-mca'), mcr = lignes('#p-mcr'), mem = lignes('#p-mem'), msa = lignes('#p-msa'), mun = lignes('#p-mun'), pgm = lignes('#p-pgm');
+    if (!cats.length || !bud.length || !mob.length || !ann.length || !psv.length || !pty.length || !mca.length || !mcr.length || !mem.length || !msa.length || !mun.length || !mdr.length || !pgm.length || !aed.length) return toast('Chaque liste doit contenir au moins un choix.');
     await sauver('parametres', {
       id: 'general', nomOutil: $('#p-nom').value.trim() || DEFAUTS.nomOutil, nomService: $('#p-svc').value.trim() || DEFAUTS.nomService,
       affiche: { lieu: $('#p-aff-l').value.trim(), pied: $('#p-aff-p').value.trim() || DEFAUTS.affiche.pied },
@@ -137,9 +150,10 @@ export const actions = {
       verification: { mois: val('#p-ver', 'verification.mois') },
       partenaires: { services: psv, types: pty, reunionMensuelle: $('#p-reu').value.trim() || DEFAUTS.partenaires.reunionMensuelle, alerteJours: val('#p-pal', 'partenaires.alerteJours') },
       portage: { prestataire: $('#p-pgp').value.trim(), motifs: pgm },
+      accueils: { etatsDossier: aed, objectifHeures: val('#p-aoh', 'accueils.objectifHeures'), montantBourse: val('#p-amb', 'accueils.montantBourse'), seuilRetardHeures: val('#p-ash', 'accueils.seuilRetardHeures'), alerteJours: val('#p-aaj', 'accueils.alerteJours') },
       materiel: { categories: mca, categoriesReserves: mcr, emplacements: mem, saisons: msa, unites: mun, alertePeremptionJours: val('#p-mpe', 'materiel.alertePeremptionJours') },
       securite: { motDePasseMin: val('#p-pw', 'securite.motDePasseMin'), joursCorbeille: val('#p-corb', 'securite.joursCorbeille'), joursJournal: val('#p-jour', 'securite.joursJournal'), rappelSauvegardeJours: val('#p-rap', 'securite.rappelSauvegardeJours'), horizonEmargementJours: val('#p-hor', 'securite.horizonEmargementJours') },
-      modules: { taches: $('#p-m-taches').checked, bilans: $('#p-m-bilans').checked, portage: $('#p-m-portage').checked }
+      modules: { taches: $('#p-m-taches').checked, bilans: $('#p-m-bilans').checked, portage: $('#p-m-portage').checked, accueils: $('#p-m-accueils').checked }
     }, 'Paramètres enregistrés');
     render();
   },
