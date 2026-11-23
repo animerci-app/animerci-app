@@ -202,3 +202,25 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal()
     $('#main').innerHTML = `<div class="login"><div class="card"><h1>Démarrage impossible</h1><div class="err">${esc(e.message)}</div><p>Vérifiez la connexion Internet et la configuration (js/config.js).</p></div></div>`;
   }
 })();
+
+/* Bouton « œil » : afficher ou masquer le mot de passe en cours de saisie (Chrome n'en propose pas). Appliqué à tout champ mot de passe, y compris ceux créés plus tard. */
+function ajouterOeil(root) {
+  root.querySelectorAll('input[type="password"]:not([data-oeil])').forEach(inp => {
+    inp.setAttribute('data-oeil', '1');
+    const actif = document.activeElement === inp;
+    const wrap = document.createElement('span'); wrap.className = 'pw-wrap';
+    inp.replaceWith(wrap); wrap.appendChild(inp);
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'pw-oeil';
+    b.setAttribute('aria-label', 'Afficher le mot de passe'); b.setAttribute('aria-pressed', 'false'); b.title = 'Afficher ou masquer le mot de passe'; b.textContent = '👁';
+    b.addEventListener('click', ev => {
+      ev.preventDefault(); ev.stopPropagation();
+      const voir = inp.type === 'password'; inp.type = voir ? 'text' : 'password';
+      b.setAttribute('aria-pressed', String(voir)); b.setAttribute('aria-label', voir ? 'Masquer le mot de passe' : 'Afficher le mot de passe');
+      b.classList.toggle('on', voir); inp.focus();
+    });
+    wrap.appendChild(b);
+    if (actif) inp.focus();
+  });
+}
+new MutationObserver(() => ajouterOeil(document)).observe(document.body, { childList: true, subtree: true });
+ajouterOeil(document);

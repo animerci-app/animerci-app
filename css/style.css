@@ -15,7 +15,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 button:focus-visible,a:focus-visible{outline:3px solid var(--corail);outline-offset:2px}
 h1,h2,h3{font-family:var(--display);font-weight:400;margin:0;text-wrap:balance}
 .app{display:grid;grid-template-columns:248px 1fr;min-height:100%}
-nav.side{background:var(--prune);color:#fff;padding:24px 16px;display:flex;flex-direction:column;gap:6px;position:sticky;top:0;height:100vh;height:100dvh}
+nav.side{background:var(--prune);color:#fff;padding:24px 16px;display:flex;flex-direction:column;gap:6px;position:sticky;top:0;height:100vh;height:100dvh;overflow-y:auto;overscroll-behavior:contain}
 .brand{display:flex;align-items:center;gap:10px;padding:0 10px 18px;font-family:var(--display);font-size:22px}
 .brand i{width:34px;height:34px;border-radius:50%;background:var(--rose);display:grid;place-items:center;color:var(--prune);font-style:normal;font-size:18px}
 .nav-btn{display:flex;align-items:center;gap:12px;background:none;border:0;color:#F3DCE6;padding:12px 14px;border-radius:12px;text-align:left;font-weight:600}
@@ -208,8 +208,10 @@ body:has(.modal-bg) .toast{bottom:auto;top:12px;z-index:70}
 .brand img{width:34px;height:34px;border-radius:50%;flex:none}
 .logo-login{display:block;margin:0 auto 10px;border-radius:50%}
 .login{text-align:center}.login .card{text-align:left}.login h1{text-align:center}.login .sub{text-align:center}
-.nav-compte{display:none}
-@media (max-width:860px){.nav-compte{display:flex}}
+/* Bouton Compte : toujours visible. Sur grand écran, en haut du menu (le pied du menu peut sortir de l'écran) ; sur écran étroit, avec les rubriques. */
+.nav-compte{display:flex;order:-1}
+nav.side .brand{order:-2}
+@media (max-width:860px){.nav-compte{order:0}nav.side .brand{order:0}}
 .feuille{border:2px solid var(--prune);border-radius:14px;padding:20px;background:#fff;color:var(--encre)}
 .feuille h3{font-size:26px;color:var(--prune);margin-bottom:2px}
 .feuille h4{margin:14px 0 4px;font-size:16px;color:var(--prune);border-bottom:1px solid var(--ligne)}
@@ -221,3 +223,11 @@ body:has(.modal-bg) .toast{bottom:auto;top:12px;z-index:70}
 @media print{.feuille{border:2px solid #000!important;background:#fff!important;color:#000!important}.feuille h3,.feuille h4{color:#000!important}.noprint-modal{display:none!important}}
 
 @media print{body:has(.modal-bg) .app,body:has(.modal-bg) #banner{display:none!important}}
+
+/* Bouton œil des mots de passe */
+.pw-wrap{position:relative;display:block}
+.pw-wrap input{width:100%;padding-right:46px}
+.pw-oeil{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:36px;height:36px;border:0;border-radius:8px;background:transparent;cursor:pointer;font-size:18px;line-height:1;opacity:.55}
+.pw-oeil.on{opacity:1;background:#F4E4EC}
+.pw-oeil:focus-visible{outline:2px solid var(--prune);opacity:1}
+input[type=password]::-ms-reveal,input[type=password]::-ms-clear{display:none}

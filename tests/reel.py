@@ -28,13 +28,20 @@ with sync_playwright() as p:
     def login(em,pw):
         pg.fill('#em',em); pg.fill('#pw',pw); pg.click('#fl button[type=submit], #fl .btn')
     # mauvais mot de passe
+    check(pg.locator('#fl .pw-oeil').count()==1,'connexion : bouton œil présent')
+    pg.fill('#pw','zz'); pg.click('#fl .pw-oeil'); check(pg.eval_on_selector('#pw','i=>i.type')=='text','connexion : œil affiche le mot de passe')
     login('m@x.fr','faux'); pg.wait_for_selector('#lerr',state='visible'); check('incorrect' in pg.inner_text('#lerr'),'mot de passe erroné : message clair')
     # administratrice
     login('m@x.fr','pw1'); pg.wait_for_selector('text=Que voulez-vous faire')
     check(pg.locator('nav.side .nav-btn[data-v]').count()==10,'admin : 10 entrées de menu')
     # mot de passe trop court (pw1 = 3 caractères) : bandeau + changement
     check(pg.locator('text=Votre mot de passe est trop court').count()==1,'mot de passe court : bandeau affiché')
-    pg.click('main [data-action=mdp-form]'); pg.fill('#m0','pw1'); pg.fill('#m1','court'); pg.fill('#m2','court'); pg.click('#mok')
+    pg.click('main [data-action=mdp-form]'); pg.wait_for_selector('#m0')
+    check(pg.locator('.pw-oeil').count()==3,'œil : un bouton par champ mot de passe (3)')
+    pg.fill('#m1','abc'); pg.locator('.pw-oeil').nth(1).click()
+    check(pg.eval_on_selector('#m1','i=>i.type')=='text' and pg.input_value('#m1')=='abc' and pg.eval_on_selector('#m0','i=>i.type')=='password','œil : affiche seulement le champ visé, texte conservé')
+    pg.locator('.pw-oeil').nth(1).click(); check(pg.eval_on_selector('#m1','i=>i.type')=='password','œil : masque de nouveau')
+    pg.fill('#m0','pw1'); pg.fill('#m1','court'); pg.fill('#m2','court'); pg.click('#mok')
     check('au moins 12' in pg.inner_text('#merr'),'mot de passe court refusé par l\'outil')
     pg.fill('#m1','une phrase longue 2026'); pg.fill('#m2','une phrase longue 2026'); pg.click('#mok'); pg.wait_for_timeout(500)
     check(pg.evaluate("window.__fb.accounts['m@x.fr'].pw")=='une phrase longue 2026','mot de passe changé côté compte')

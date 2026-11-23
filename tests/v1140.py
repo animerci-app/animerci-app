@@ -14,7 +14,20 @@ with sync_playwright() as p:
     check(pg.locator('.logo-login').count()==1 and pg.eval_on_selector('.logo-login','i=>i.complete && i.naturalWidth>0'),'écran d\'ouverture : logo affiché')
     pg.click('text=Essayer comme administratrice'); pg.wait_for_selector('text=Que voulez-vous faire')
     check(pg.eval_on_selector('.brand img','i=>i.complete && i.naturalWidth>0'),'menu : logo affiché')
-    check(not pg.locator('.nav-compte').is_visible(),'ordinateur : pas de bouton Compte (le pied de menu suffit)')
+    # Grand écran : Compte visible EN HAUT du menu, même sur une fenêtre basse ; toutes les rubriques atteignables
+    for h in (900,600,420):
+        pg.set_viewport_size({'width':1280,'height':h})
+        bc=pg.locator('.nav-compte').bounding_box()
+        check(pg.locator('.nav-compte').is_visible() and bc['y']>=0 and bc['y']+bc['height']<=h,'ordinateur %d px de haut : bouton Compte visible dans l\'écran'%h)
+        pg.evaluate("document.querySelector('nav.side').scrollTop=99999")
+        last=pg.locator('nav.side .foot button[data-action=logout]').bounding_box()
+        check(last['y']+last['height']<=h+1,'ordinateur %d px de haut : en faisant défiler le menu, Se déconnecter est atteignable'%h)
+        navs=pg.locator('nav.side .nav-btn[data-action=nav]'); n=navs.count()
+        lb=navs.nth(n-1).bounding_box() if n else None
+        check(n>0 and lb['y']+lb['height']<=h+1,'ordinateur %d px de haut : dernière rubrique atteignable'%h)
+        pg.evaluate("document.querySelector('nav.side').scrollTop=0")
+    pg.set_viewport_size({'width':1280,'height':900})
+    pg.click('.nav-compte'); pg.wait_for_selector('.modal button:has-text("Se déconnecter")'); check(True,'ordinateur : le bouton Compte ouvre la fenêtre de déconnexion'); pg.click('.modal button:has-text("Fermer")') if pg.locator('.modal button:has-text("Fermer")').count() else pg.keyboard.press('Escape')
     # --- Accueil : alertes
     check(pg.locator('.alertes').count()==1,'accueil : carte Alertes')
     # --- Fiche d'activité : nouveaux champs, événement
@@ -81,7 +94,7 @@ with sync_playwright() as p:
     m.goto('http://localhost:8765/index.html'); m.wait_for_selector('text=Essayer comme administratrice'); m.click('text=Essayer comme administratrice'); m.wait_for_selector('.nav-compte')
     check(m.locator('.nav-compte').is_visible() and not m.locator('.side .foot').is_visible(),'téléphone : bouton Compte visible, pied de menu masqué')
     m.click('.nav-compte'); m.wait_for_selector('.modal button:has-text("Se déconnecter")')
-    check('Version 1.14.0' in m.inner_text('.modal') or 'version 1.14.0' in m.inner_text('.modal'),'téléphone : fenêtre Compte avec le numéro de version')
+    check('Version 1.14.1' in m.inner_text('.modal') or 'version 1.14.1' in m.inner_text('.modal'),'téléphone : fenêtre Compte avec le numéro de version')
     m.click('.modal button:has-text("Se déconnecter")'); m.wait_for_selector('text=Essayer comme administratrice')
     check(m.locator('.modal').count()==0,'téléphone : déconnexion et fenêtre fermée')
     # intervenante : Compte aussi
