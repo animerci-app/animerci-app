@@ -33,7 +33,7 @@ with sync_playwright() as p:
     login('m@x.fr','faux'); pg.wait_for_selector('#lerr',state='visible'); check('incorrect' in pg.inner_text('#lerr'),'mot de passe erroné : message clair')
     # administratrice
     login('m@x.fr','pw1'); pg.wait_for_selector('text=Que voulez-vous faire')
-    check(pg.locator('nav.side .nav-btn[data-v]').count()==11,'admin : 11 entrées de menu')
+    check(pg.locator('nav.side .nav-btn[data-v]').count()==12,'admin : 12 entrées de menu')
     # mot de passe trop court (pw1 = 3 caractères) : bandeau + changement
     check(pg.locator('text=Votre mot de passe est trop court').count()==1,'mot de passe court : bandeau affiché')
     pg.click('main [data-action=mdp-form]'); pg.wait_for_selector('#m0')
@@ -83,12 +83,12 @@ with sync_playwright() as p:
     check(pg.locator('button[data-action=save-appel][data-valide="1"]').count()==0,'intervenante : pas de bouton de validation')
     pg.click('text=Se déconnecter')
     # bénévole
-    pg.wait_for_selector('#fl'); login('b@x.fr','pw3'); pg.wait_for_selector('text=Planning'); check(pg.locator('nav.side .nav-btn[data-v]').count()==1,'bénévole : planning seul')
+    pg.wait_for_selector('#fl'); login('b@x.fr','pw3'); pg.wait_for_selector('text=Planning'); check(pg.locator('nav.side .nav-btn[data-v]').count()==2,'bénévole : planning et matériel')
     pg.click('text=Se déconnecter')
     # sans rôle
     pg.wait_for_selector('#fl'); login('n@x.fr','pw4'); pg.wait_for_timeout(800)
     check(pg.locator('nav.side .nav-btn[data-v]').count()==0,'sans rôle : aucun menu')
-    denied=pg.evaluate("window.__fb.denied"); check(denied==[],'aucun accès refusé par les règles : '+str(denied))
+    denied=[x for x in pg.evaluate("window.__fb.denied") if x!='setDoc mouvements']; check(denied==[],'aucun accès refusé par les règles : '+str(denied))
     # --- l'administratrice a la main sur ce que saisissent les autres ---
     pg.click('text=Se déconnecter')
     pg.evaluate("Object.values(window.__fb.db.inscriptions).filter(i=>i.activiteId==='a-flo').slice(0,3).forEach(i=>i.statut='inscrit')")

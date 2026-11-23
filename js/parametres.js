@@ -27,6 +27,15 @@ export const DEFAUTS = {
     reunionMensuelle: 'Réunion mensuelle de l\'équipe de la résidence',
     alerteJours: 30
   },
+  // Matériel (lot A) : listes de choix, unités, délai d'alerte de péremption. Les « états » (bon, usé, à réparer, manquant, hors d'usage) sont fixes : les alertes en dépendent.
+  materiel: {
+    categories: ['Vaisselle', 'Assiettes', 'Verres', 'Tasses', 'Bols', 'Couverts', 'Plateaux', 'Nappes', 'Décorations', 'Matériel créatif', 'Matériel de loisirs', 'Équipements'],
+    categoriesReserves: ['Café', 'Thé', 'Sucre', 'Eau', 'Jus', 'Biscuits', 'Denrées non périssables', 'Fournitures pour événements'],
+    emplacements: ['Armoire de la salle d\'activités', 'Local de rangement', 'Cuisine', 'Réserve'],
+    saisons: ['Noël', 'Printemps', 'Été', 'Automne', 'Banquet', 'Repas festifs'],
+    unites: ['unité(s)', 'kg', 'g', 'L', 'cl', 'boîte(s)', 'paquet(s)', 'sachet(s)', 'bouteille(s)', 'rouleau(x)', 'lot(s)'],
+    alertePeremptionJours: 30
+  },
   // Lieux de vie : le nom de la résidence (pour les résident·es) et la commune proposée à l'inscription d'un·e adhérent·e
   residence: { nom: '', adresse: '' },
   commune: { defaut: '' },
@@ -36,7 +45,7 @@ export const DEFAUTS = {
   modules: { taches: true, bilans: true }
 };
 // Bornes acceptées pour les nombres (une valeur hors bornes est ignorée au profit de la valeur par défaut)
-const BORNES = { 'adhesion.montantDefaut': [0, 1000], 'securite.joursCorbeille': [1, 365], 'securite.joursJournal': [30, 1095], 'securite.rappelSauvegardeJours': [1, 365], 'securite.motDePasseMin': [8, 64], 'securite.horizonEmargementJours': [1, 90], 'partenaires.alerteJours': [1, 365] };
+const BORNES = { 'adhesion.montantDefaut': [0, 1000], 'securite.joursCorbeille': [1, 365], 'securite.joursJournal': [30, 1095], 'securite.rappelSauvegardeJours': [1, 365], 'securite.motDePasseMin': [8, 64], 'securite.horizonEmargementJours': [1, 90], 'partenaires.alerteJours': [1, 365], 'materiel.alertePeremptionJours': [1, 365] };
 
 const lire = (obj, chemin) => chemin.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
 export function P(chemin) {
@@ -77,6 +86,14 @@ export function parametres() {
     ${liste('p-pty', 'partenaires.types', 'Types de partenariat', 'Une par ligne.')}
     <div class="two"><div class="field"><label for="p-reu">Nom de la réunion mensuelle de l'équipe</label><input id="p-reu" value="${esc(P('partenaires.reunionMensuelle'))}"><small class="sub">Utilisé par « Planifier la série mensuelle » (écran Partenaires › Réunions).</small></div>
     ${num('p-pal', 'partenaires.alerteJours', 'Alerte « convention » avant l\'échéance (jours)')}</div></div>
+  <div class="card" style="margin-bottom:14px"><h2 style="margin-top:0">Matériel et réserves</h2>
+    ${liste('p-mca', 'materiel.categories', 'Catégories du matériel (inventaire)', 'Une par ligne. Les articles déjà créés gardent leur catégorie.')}
+    ${liste('p-mcr', 'materiel.categoriesReserves', 'Catégories des réserves', 'Une par ligne (café, thé, boissons, fournitures…).')}
+    ${liste('p-mem', 'materiel.emplacements', 'Emplacements proposés', 'Une par ligne (armoire, local, étagère…). Proposés en tapant ; un autre emplacement peut toujours être écrit à la main.')}
+    ${liste('p-msa', 'materiel.saisons', 'Saisons et occasions des caisses de décorations', 'Une par ligne (Noël, Printemps, Banquet…).')}
+    ${liste('p-mun', 'materiel.unites', 'Unités des réserves', 'Une par ligne (kg, L, boîte(s)…).')}
+    <div class="two">${num('p-mpe', 'materiel.alertePeremptionJours', 'Alerte « péremption proche » (jours avant la date)')}</div>
+    <p class="sub" style="margin:0">✔ <b>À écrire</b> : des noms d'objets et de lieux de rangement. ✘ <b>À ne pas écrire</b> : toute information de santé. Les états du matériel (bon état, usé, à réparer, manquant, hors d'usage) ne se modifient pas : les alertes en dépendent.</p></div>
   <div class="card" style="margin-bottom:14px"><h2 style="margin-top:0">Adhésion et sécurité</h2><div class="two">
     ${num('p-cot', 'adhesion.montantDefaut', 'Montant de la cotisation proposé (€)')}
     ${num('p-pw', 'securite.motDePasseMin', 'Longueur minimale du mot de passe', 'Au moins 8. Une personne dont le mot de passe est plus court est invitée à le changer à la connexion.')}
@@ -95,7 +112,8 @@ export const actions = {
   'param-save': async () => {
     if (!peutAdmin()) return;
     const cats = lignes('#p-cats'), bud = lignes('#p-bud'), mob = lignes('#p-mob'), ann = lignes('#p-ann'), psv = lignes('#p-psv'), pty = lignes('#p-pty');
-    if (!cats.length || !bud.length || !mob.length || !ann.length || !psv.length || !pty.length) return toast('Chaque liste doit contenir au moins un choix.');
+    const mca = lignes('#p-mca'), mcr = lignes('#p-mcr'), mem = lignes('#p-mem'), msa = lignes('#p-msa'), mun = lignes('#p-mun');
+    if (!cats.length || !bud.length || !mob.length || !ann.length || !psv.length || !pty.length || !mca.length || !mcr.length || !mem.length || !msa.length || !mun.length) return toast('Chaque liste doit contenir au moins un choix.');
     await sauver('parametres', {
       id: 'general', nomOutil: $('#p-nom').value.trim() || DEFAUTS.nomOutil, nomService: $('#p-svc').value.trim() || DEFAUTS.nomService,
       affiche: { lieu: $('#p-aff-l').value.trim(), pied: $('#p-aff-p').value.trim() || DEFAUTS.affiche.pied },
@@ -104,6 +122,7 @@ export const actions = {
       annuaire: { categories: ann, rubriques: Object.fromEntries(Object.keys(RUBR_LABELS).map(k => [k, ann.includes($('#p-r-' + k).value) ? $('#p-r-' + k).value : ann[0]])) },
       adhesion: { montantDefaut: val('#p-cot', 'adhesion.montantDefaut') },
       partenaires: { services: psv, types: pty, reunionMensuelle: $('#p-reu').value.trim() || DEFAUTS.partenaires.reunionMensuelle, alerteJours: val('#p-pal', 'partenaires.alerteJours') },
+      materiel: { categories: mca, categoriesReserves: mcr, emplacements: mem, saisons: msa, unites: mun, alertePeremptionJours: val('#p-mpe', 'materiel.alertePeremptionJours') },
       securite: { motDePasseMin: val('#p-pw', 'securite.motDePasseMin'), joursCorbeille: val('#p-corb', 'securite.joursCorbeille'), joursJournal: val('#p-jour', 'securite.joursJournal'), rappelSauvegardeJours: val('#p-rap', 'securite.rappelSauvegardeJours'), horizonEmargementJours: val('#p-hor', 'securite.horizonEmargementJours') },
       modules: { taches: $('#p-m-taches').checked, bilans: $('#p-m-bilans').checked }
     }, 'Paramètres enregistrés');

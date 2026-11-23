@@ -326,3 +326,139 @@ console.log('ok - identifiants des fiches de démonstration');
   assert.ok(!besoins({ role: 'partenaire', uid: 'p1', view: 'home', auj: '2026-11-23' }).some(x => ['contacts', 'seniors', 'activites', 'conventions'].includes(x.col)));
   console.log('ok - partenaire : chargement limité à ses échanges');
 }
+
+/* ---------- Lot A (1.17.0) : matériel, réserves, emprunts ---------- */
+{
+  const ok = (c, m) => { assert.ok(c, m); };
+  const AUJ = '2026-11-23';
+  // nombres
+  assert.equal(L.lireNombre('2,5'), 2.5); assert.ok(Number.isNaN(L.lireNombre(''))); assert.equal(L.fmtQte(2.5), '2,5'); assert.equal(L.fmtQte(3), '3');
+  // validations
+  assert.match(L.erreurMateriel({ type: 'objet', nom: '', quantite: 1 }), /nom/);
+  assert.match(L.erreurMateriel({ type: 'caisse', nom: 'x', numero: '', quantite: 1, etat: 'bon' }), /numéro/);
+  assert.match(L.erreurMateriel({ type: 'objet', nom: 'x', quantite: 1.5, etat: 'bon', seuil: 0 }), /entier/);
+  assert.match(L.erreurMateriel({ type: 'objet', nom: 'x', quantite: -1, etat: 'bon', seuil: 0 }), /quantité/);
+  assert.equal(L.erreurMateriel({ type: 'reserve', nom: 'Café', quantite: 2.5, seuil: 1, peremption: 'aucun' }), '');
+  assert.match(L.erreurMateriel({ type: 'reserve', nom: 'x', quantite: 1, peremption: 'article', datePeremption: '' }), /péremption/);
+  assert.match(L.erreurMateriel({ type: 'reserve', nom: 'x', peremption: 'lot', lots: [] }), /au moins un lot/);
+  assert.match(L.erreurMateriel({ type: 'reserve', nom: 'x', peremption: 'lot', lots: [{ quantite: 2, date: '' }] }), /date de péremption/);
+  assert.equal(L.erreurMateriel({ type: 'reserve', nom: 'x', peremption: 'lot', lots: [{ quantite: 2, date: '2027-01-01' }] }), '');
+  // champs calculés
+  const biscuits = L.preparerMateriel({ type: 'reserve', nom: 'Biscuits', unite: 'boîte(s)', seuil: 5, peremption: 'lot', quantite: 0, lots: [{ libelle: 'Lot 1', quantite: 4, date: '2026-12-05' }, { libelle: 'Lot 2', quantite: 5, date: '2027-06-01' }] }, null, { par: 'Alice', auj: AUJ });
+  assert.equal(biscuits.quantite, 9); assert.equal(biscuits.echeance, '2026-12-05'); assert.equal(biscuits.bas, false);
+  assert.ok(biscuits.lots.every(l => l.id && l.par === 'Alice' && l.le === AUJ), 'lots nouveaux : relevé par/le = auteur et date du jour');
+  assert.equal(biscuits.modifiePar, 'Alice');
+  // « relevé par » ne change que si la date change
+  const l1 = biscuits.lots[0], l2 = biscuits.lots[1];
+  const modif = L.preparerMateriel({ ...biscuits, lots: [{ ...l1, quantite: 3 }, { ...l2, date: '2027-07-01' }] }, biscuits, { par: 'Bob', auj: '2026-11-30' });
+  assert.equal(modif.lots[0].par, 'Alice'); assert.equal(modif.lots[0].le, AUJ); assert.equal(modif.lots[1].par, 'Bob'); assert.equal(modif.lots[1].le, '2026-11-30');
+  assert.equal(modif.quantite, 8);
+  // article entier : relevé par/le
+  const cafe = L.preparerMateriel({ type: 'reserve', nom: 'Café', unite: 'paquet(s)', quantite: 3, seuil: 4, peremption: 'article', datePeremption: '2027-03-01' }, null, { par: 'Alice', auj: AUJ });
+  assert.equal(cafe.bas, true); assert.equal(cafe.echeance, '2027-03-01'); assert.equal(cafe.peremptionPar, 'Alice');
+  const cafe2 = L.preparerMateriel({ ...cafe, quantite: 10 }, cafe, { par: 'Bob', auj: '2026-12-01' });
+  assert.equal(cafe2.peremptionPar, 'Alice'); assert.equal(cafe2.peremptionLe, AUJ); assert.equal(cafe2.bas, false);
+  const cafe3 = L.preparerMateriel({ ...cafe, datePeremption: '2027-05-01' }, cafe, { par: 'Bob', auj: '2026-12-01' });
+  assert.equal(cafe3.peremptionPar, 'Bob'); assert.equal(cafe3.peremptionLe, '2026-12-01');
+  // passage en « sans péremption » : plus d'échéance
+  assert.equal(L.preparerMateriel({ ...cafe, peremption: 'aucun' }, cafe, { par: 'Bob', auj: AUJ }).echeance, '');
+  // stock à zéro : plus d'échéance
+  assert.equal(L.preparerMateriel({ ...cafe, quantite: 0 }, cafe, { par: 'Bob', auj: AUJ }).echeance, '');
+  // textes explicites pour l'équipe
+  assert.match(L.textesPeremption(cafe)[0], /relevée le 23\/11\/2026 par Alice : 01\/03\/2027 — concerne l'article entier/);
+  const tl = L.textesPeremption(biscuits); assert.equal(tl.length, 2); assert.match(tl[0], /concerne le lot « Lot 1 » \(4 boîte\(s\)\)/); assert.match(tl[0], /par Alice/);
+  // objets : état « manquant »
+  assert.equal(L.derivesMateriel({ type: 'objet', etat: 'manquant', quantite: 3, seuil: 0 }).manquant, true);
+  assert.equal(L.derivesMateriel({ type: 'objet', etat: 'bon', quantite: 3, seuil: 3 }).bas, true);
+  assert.equal(L.derivesMateriel({ type: 'caisse', etat: 'bon', quantite: 0, seuil: 5 }).bas, false, 'pas de seuil pour une caisse');
+  // mouvements : article
+  let r = L.appliquerMouvement(cafe, { sens: 'sortie', quantite: 2 }, { par: 'Bob', auj: AUJ }); assert.equal(r.materiel.quantite, 1); assert.equal(r.apres, 1); assert.equal(r.materiel.bas, true);
+  assert.match(L.appliquerMouvement(cafe, { sens: 'sortie', quantite: 5 }, {}).erreur, /Stock insuffisant : il en reste 3/);
+  assert.match(L.appliquerMouvement(cafe, { sens: 'entree', quantite: 0 }, {}).erreur, /supérieure à 0/);
+  assert.match(L.appliquerMouvement(cafe, { sens: 'x', quantite: 1 }, {}).erreur, /entrée ou sortie/);
+  assert.match(L.appliquerMouvement({ ...cafe, type: 'objet' }, { sens: 'entree', quantite: 1 }, {}).erreur, /réserves/);
+  r = L.appliquerMouvement(cafe, { sens: 'entree', quantite: 2.5, lotDate: '2027-09-01' }, { par: 'Bob', auj: '2026-12-01' });
+  assert.equal(r.materiel.quantite, 5.5); assert.equal(r.materiel.datePeremption, '2027-09-01'); assert.equal(r.materiel.peremptionPar, 'Bob');
+  r = L.appliquerMouvement(cafe, { sens: 'entree', quantite: 1 }, { par: 'Bob', auj: '2026-12-01' }); assert.equal(r.materiel.peremptionPar, 'Alice', 'sans nouvelle date, le relevé ne change pas');
+  // mouvements : lots
+  r = L.appliquerMouvement(biscuits, { sens: 'sortie', quantite: 4, lotId: l1.id }, { par: 'Bob', auj: AUJ });
+  assert.equal(r.materiel.lots.length, 1, 'le lot vide disparaît'); assert.equal(r.materiel.quantite, 5); assert.equal(r.materiel.echeance, '2027-06-01'); assert.equal(r.lot, 'Lot 1');
+  assert.match(L.appliquerMouvement(biscuits, { sens: 'sortie', quantite: 9, lotId: l1.id }, {}).erreur, /insuffisant dans ce lot/);
+  assert.match(L.appliquerMouvement(biscuits, { sens: 'sortie', quantite: 1 }, {}).erreur, /lot concerné/);
+  r = L.appliquerMouvement(biscuits, { sens: 'entree', quantite: 6, lotLibelle: 'Don de mars', lotDate: '2027-02-01' }, { par: 'Carla', auj: '2026-12-02' });
+  assert.equal(r.materiel.lots.length, 3); assert.equal(r.materiel.quantite, 15); assert.equal(r.materiel.lots[2].par, 'Carla'); assert.equal(r.lot, 'Don de mars');
+  assert.match(L.appliquerMouvement(biscuits, { sens: 'entree', quantite: 1 }, {}).erreur, /date de péremption du nouveau lot/);
+  r = L.appliquerMouvement(biscuits, { sens: 'entree', quantite: 1, lotId: l2.id, lotDate: '2027-08-01' }, { par: 'Carla', auj: '2026-12-02' });
+  assert.equal(r.materiel.lots[1].quantite, 6); assert.equal(r.materiel.lots[1].date, '2027-08-01'); assert.equal(r.materiel.lots[1].par, 'Carla');
+  // le matériel d'origine n'est pas modifié (fonction pure)
+  assert.equal(biscuits.lots[0].quantite, 4);
+  // emprunts
+  const verres = { id: 'v', type: 'objet', nom: 'Verres', quantite: 18 };
+  const emp = [{ id: 'e1', materielId: 'v', quantite: 6, rendu: false }, { id: 'e2', materielId: 'v', quantite: 4, rendu: true }, { id: 'e3', materielId: 'autre', quantite: 9, rendu: false }];
+  assert.equal(L.pretes(verres, emp), 6); assert.equal(L.disponible(verres, emp), 12); assert.equal(L.disponible(verres, emp, 'e1'), 18);
+  const E0 = { materielId: 'v', quantite: 3, emprunteur: 'Service jeunesse', dateSortie: '2026-11-20', retourPrevu: '2026-11-27' };
+  assert.equal(L.erreurEmprunt(E0, verres, emp), '');
+  assert.match(L.erreurEmprunt({ ...E0, quantite: 13 }, verres, emp), /il n'en reste que 12/);
+  assert.match(L.erreurEmprunt({ ...E0, quantite: 0 }, verres, emp), /entière/); assert.match(L.erreurEmprunt({ ...E0, quantite: 1.5 }, verres, emp), /entière/);
+  assert.match(L.erreurEmprunt({ ...E0, emprunteur: ' ' }, verres, emp), /qui emprunte/);
+  assert.match(L.erreurEmprunt({ ...E0, retourPrevu: '2026-11-19' }, verres, emp), /avant la date de sortie/);
+  assert.match(L.erreurEmprunt({ ...E0, dateSortie: '' }, verres, emp), /date de sortie/); assert.match(L.erreurEmprunt({ ...E0, retourPrevu: '' }, verres, emp), /retour prévue/);
+  assert.match(L.erreurEmprunt(E0, null, emp), /Choisissez le matériel/); assert.match(L.erreurEmprunt(E0, { ...verres, type: 'reserve' }, emp), /ne se prête pas/);
+  assert.equal(L.erreurEmprunt({ ...E0, id: 'e1', quantite: 18 }, verres, emp), '', 'modifier un emprunt ne compte pas ses propres pièces');
+  assert.match(L.erreurEmprunt(E0, verres, [{ materielId: 'v', quantite: 18, rendu: false }]), /Plus rien à prêter/);
+  // retour complet / partiel
+  const E1 = { id: 'e1', materielId: 'v', materielNom: 'Verres', quantite: 6, dateSortie: '2026-11-10', retourPrevu: '2026-11-15', rendu: false, emprunteur: 'X', commentaire: 'Pot' };
+  let s = L.solderEmprunt(E1, { quantiteRendue: 6, date: '2026-11-18', etat: 'bon' }); assert.equal(s.clos.rendu, true); assert.equal(s.clos.retourReel, '2026-11-18'); assert.equal(s.reste, null);
+  s = L.solderEmprunt(E1, { quantiteRendue: 4, date: '2026-11-18', etat: 'reparer' }); assert.equal(s.clos.quantite, 4); assert.equal(s.clos.etatRetour, 'reparer'); assert.equal(s.reste.quantite, 2); assert.equal(s.reste.rendu, false); assert.ok(!('id' in s.reste)); assert.match(s.reste.commentaire, /retour partiel du 18\/11\/2026/);
+  assert.match(L.solderEmprunt(E1, { quantiteRendue: 7, date: '2026-11-18' }).erreur, /entre 1 et 6/); assert.match(L.solderEmprunt(E1, { quantiteRendue: 0, date: '2026-11-18' }).erreur, /entre 1 et 6/);
+  assert.match(L.solderEmprunt(E1, { quantiteRendue: 6, date: '2026-11-09' }).erreur, /avant la date de sortie/); assert.match(L.solderEmprunt(E1, { quantiteRendue: 6, date: '' }).erreur, /date de retour/);
+  assert.match(L.solderEmprunt(E1, { quantiteRendue: 6, date: '2026-11-18', etat: 'zzz' }).erreur, /état/);
+  assert.equal(L.statutEmprunt(E1, AUJ), 'retard'); assert.equal(L.statutEmprunt(E1, '2026-11-15'), 'encours'); assert.equal(L.statutEmprunt({ ...E1, rendu: true }, AUJ), 'rendu'); assert.equal(L.joursDeRetard(E1, AUJ), 8);
+  // alertes
+  const mat = [
+    { id: 'a', type: 'objet', nom: 'Verres', quantite: 0, seuil: 5, etat: 'bon' }, { id: 'b', type: 'objet', nom: 'Plats', quantite: 3, seuil: 5, etat: 'manquant' },
+    { id: 'c', type: 'reserve', nom: 'Café', unite: 'paquet(s)', quantite: 2, seuil: 4, peremption: 'article', datePeremption: '2026-11-20' },
+    { id: 'd', type: 'reserve', nom: 'Thé', unite: 'boîte(s)', quantite: 9, seuil: 0, peremption: 'lot', lots: [{ id: 'x', libelle: 'Lot A', quantite: 5, date: '2026-12-10' }, { id: 'y', libelle: 'Lot B', quantite: 4, date: '2027-06-01' }] },
+    { id: 'e', type: 'caisse', nom: 'Noël', numero: '1', quantite: 4, etat: 'manquant' }
+  ];
+  const al = L.alertesMateriel({ materiel: mat, emprunts: [E1], auj: AUJ, joursPeremption: 30 }), txt = al.map(a => a.niveau + ':' + a.texte).join('\n');
+  assert.match(txt, /crit:1 produit périmé : Café \(20\/11\)/); assert.match(txt, /warn:1 produit à consommer dans les 30 jours : Thé \(Lot A\) \(10\/12\)/);
+  assert.match(txt, /crit:1 article épuisé \(inventaire\) : Verres/); assert.match(txt, /warn:1 article en stock bas \(réserve\) : Café \(2 paquet\(s\)\)/);
+  assert.match(txt, /crit:1 emprunt en retard : Verres \(X\)/); assert.match(txt, /warn:2 matériels déclarés manquants : Plats, Noël/);
+  assert.ok(al.every(a => a.vue === 'materiel' && a.tab));
+  assert.equal(L.alertesMateriel({ materiel: [], emprunts: [], auj: AUJ }).length, 0);
+  // alertes de l'accueil : le matériel y est intégré
+  assert.ok(L.alertesAccueil({ activites: [], inscriptions: [], seances: [], taches: [], auj: AUJ, materiel: mat, emprunts: [E1] }).some(a => a.vue === 'materiel'));
+  // tableaux d'export
+  const T = L.tableauxMateriel({ materiel: [{ ...biscuits, id: 'b1' }, { ...cafe, id: 'c1' }, { id: 'o1', type: 'objet', nom: 'Verres', categorie: 'Verres', quantite: 18, etat: 'bon' }, { id: 'k1', type: 'caisse', nom: 'Guirlandes', numero: '2', saison: 'Noël', quantite: 3, etat: 'bon' }], emprunts: [{ ...E1, materielId: 'o1' }], mouvements: [{ date: '2026-11-01', materielNom: 'Café', sens: 'entree', quantite: 6, motif: 'Achat', apres: 6, par: 'Alice' }] }, AUJ);
+  assert.deepEqual(T.map(x => x.nom), ['Inventaire', 'Réserves', 'Caisses', 'Emprunts', 'Mouvements de stock']);
+  assert.equal(T[1].rows.length, 3, 'réserves : une ligne par lot + une pour l\'article entier'); assert.ok(T[1].rows.some(r => r.includes('Lot « Lot 1 »')));
+  assert.equal(T[0].rows[0][3], 6, 'inventaire : quantité prêtée'); assert.equal(T[0].rows[0][4], 12); assert.equal(T[3].rows[0][7], 'En retard');
+  for (const t of T) for (const row of t.rows) assert.equal(row.length, t.cols.length, 'tableau ' + t.nom + ' : colonnes cohérentes');
+  console.log('ok - lot A : matériel, péremption par article ou par lot, mouvements, emprunts, alertes, exports');
+}
+// Lot A : chargement à la demande (matériel)
+{
+  const cols = b => b.map(x => x.col + ':' + x.key).sort();
+  const base = { auj: '2026-11-23', activites: [], mesActivites: [], horizonPeremption: '2026-12-23' };
+  // administratrice sur l'accueil : seulement les articles concernés + emprunts non rendus (pas tout le matériel)
+  const home = cols(besoins({ ...base, role: 'admin', view: 'home' })); assert.ok(home.includes('materiel:bas') && home.includes('materiel:manquant') && home.includes('materiel:peremp-2026-12-23') && home.includes('emprunts:ouverts')); assert.ok(!home.includes('materiel:all'));
+  const f = besoins({ ...base, role: 'admin', view: 'home' }).find(b => b.key.startsWith('peremp'));
+  assert.deepEqual(f.filtre, [['echeance', '>', '0'], ['echeance', '<=', '2026-12-23']], 'plage sur un seul champ : aucun index à créer');
+  // écran Matériel : tout le matériel, emprunts ouverts ; rendus seulement dans l'onglet Emprunts ; historique et personnes à la demande
+  assert.deepEqual(cols(besoins({ ...base, role: 'admin', view: 'materiel', ongletMat: 'inventaire' })).filter(x => /materiel|emprunts|mouvements|seniors|contacts|users/.test(x)), ['emprunts:ouverts', 'materiel:all']);
+  assert.ok(cols(besoins({ ...base, role: 'admin', view: 'materiel', ongletMat: 'emprunts', anMat: '2025' })).includes('emprunts:rendus-2025'));
+  assert.deepEqual(besoins({ ...base, role: 'admin', view: 'materiel', ongletMat: 'emprunts' }).find(b => b.key === 'rendus-2026').filtre, [['retourReel', '>=', '2026-01-01'], ['retourReel', '<=', '2026-12-31']]);
+  assert.ok(cols(besoins({ ...base, role: 'admin', view: 'materiel', matHisto: 'abc' })).includes('mouvements:m-abc'));
+  assert.ok(!cols(besoins({ ...base, role: 'admin', view: 'materiel' })).includes('seniors:all'));
+  assert.ok(['seniors:all', 'contacts:all', 'users:all'].every(x => cols(besoins({ ...base, role: 'admin', view: 'materiel', matPersonnes: true })).includes(x)));
+  // équipe : le matériel sans rien d'autre que son périmètre (jamais les personnes, l'annuaire ni les comptes)
+  for (const role of ['intervenant', 'benevole']) {
+    const b = cols(besoins({ ...base, role, view: 'materiel', matPersonnes: true, mesActivites: [] }));
+    assert.ok(b.includes('materiel:all') && b.includes('emprunts:ouverts'), role + ' : charge le matériel');
+    assert.ok(!b.some(x => /^(seniors|contacts|users|conventions|echanges|fiches|taches)/.test(x)), role + ' : aucune donnée hors de son périmètre');
+    assert.ok(!cols(besoins({ ...base, role, view: 'planning' })).some(x => /materiel|emprunts/.test(x)), role + ' : rien du matériel hors de l\'écran Matériel');
+  }
+  assert.ok(!cols(besoins({ ...base, role: 'partenaire', uid: 'p', view: 'materiel' })).some(x => /materiel|emprunts/.test(x)), 'le partenaire n\'a aucun accès au matériel');
+  console.log('ok - lot A : chargement à la demande du matériel');
+}

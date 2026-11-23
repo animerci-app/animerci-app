@@ -7,6 +7,7 @@ import * as act from './views-activites.js';
 import * as eq from './views-equipe.js';
 import * as ann from './annuaire.js';
 import * as part from './partenaires.js';
+import * as mat from './materiel.js';
 import { installerRecherche, oublierRecents, champRecherche, itemPersonne, itemContact, itemActivite, AIDE_PERSONNE } from './recherche.js';
 import * as imp from './importer.js';
 import * as pwa from './pwa.js';
@@ -16,9 +17,9 @@ import * as pa from './parametres.js';
 import { P, moduleActif } from './parametres.js';
 
 const NAV = {
-  admin: [['home', 'Accueil', '⌂'], ['seniors', 'Personnes', '☺'], ['activites', 'Activités', '♥'], ['planning', 'Planning', '▦'], ['taches', 'Tâches', '✓'], ['bilans', 'Bilans', '▮'], ['annuaire', 'Annuaire', '☎'], ['partenaires', 'Partenaires', '⇄'], ['equipe', 'Équipe', '☻'], ['parametres', 'Paramètres', '⚙'], ['sauvegarde', 'Sécurité', '⛨']],
-  intervenant: [['activites', 'Mes activités', '♥'], ['planning', 'Planning', '▦']],
-  benevole: [['planning', 'Planning', '▦']],
+  admin: [['home', 'Accueil', '⌂'], ['seniors', 'Personnes', '☺'], ['activites', 'Activités', '♥'], ['planning', 'Planning', '▦'], ['taches', 'Tâches', '✓'], ['materiel', 'Matériel', '▣'], ['bilans', 'Bilans', '▮'], ['annuaire', 'Annuaire', '☎'], ['partenaires', 'Partenaires', '⇄'], ['equipe', 'Équipe', '☻'], ['parametres', 'Paramètres', '⚙'], ['sauvegarde', 'Sécurité', '⛨']],
+  intervenant: [['activites', 'Mes activités', '♥'], ['planning', 'Planning', '▦'], ['materiel', 'Matériel', '▣']],
+  benevole: [['planning', 'Planning', '▦'], ['materiel', 'Matériel', '▣']],
   partenaire: [['mespart', 'Mes échanges', '⇄']]
 };
 // Modules facultatifs : masqués du menu quand l'administratrice les désactive (Paramètres)
@@ -29,7 +30,7 @@ const ACCUEIL = { admin: 'home', intervenant: 'activites', benevole: 'planning',
 /* ---------- Données ---------- */
 // Chargement à la demande : on ne s'abonne qu'à ce que l'écran ouvert affiche (voir donnees.js). Chaque abonnement n'est créé qu'une fois.
 let unsubs = [], parts = {}, actifs = new Set(), minuteurPurge = null, rendu = false;
-const COLS_ECOUTE = COLS.concat(['users', 'corbeille', 'journal', 'parametres', 'contacts', 'echanges', 'conventions']);
+const COLS_ECOUTE = COLS.concat(['users', 'corbeille', 'journal', 'parametres', 'contacts', 'echanges', 'conventions', 'materiel', 'emprunts', 'mouvements']);
 function planifierRendu() { if (rendu) return; rendu = true; Promise.resolve().then(() => { rendu = false; render(); }); }
 function listen(col, key, filtre, opts) {
   unsubs.push(store.subscribe(col, (rows, err) => {
@@ -44,7 +45,7 @@ function listen(col, key, filtre, opts) {
 function synchroniser() {
   const u = S.user; if (!u || !u.role) return;
   const mes = (u.activites || []);
-  for (const b of besoins({ role: u.role, uid: u.uid, view: S.view, actId: S.actId, mois: S.moisPlan || { a: new Date().getFullYear(), m: new Date().getMonth() }, nbMois: S.nbMois, stat: S.stat, anPart: S.anPart, partId: S.partId,
+  for (const b of besoins({ role: u.role, uid: u.uid, view: S.view, actId: S.actId, mois: S.moisPlan || { a: new Date().getFullYear(), m: new Date().getMonth() }, nbMois: S.nbMois, stat: S.stat, anPart: S.anPart, partId: S.partId, ongletMat: mat.ongletMat(), anMat: S.anMat, matHisto: S.matHisto, matPersonnes: S.matPersonnes, horizonPeremption: ajouterJours(aujourdhui(), P('materiel.alertePeremptionJours')),
     rechGlobale: S.rechGlobale, onglet: sec.ongletCourant(), auj: aujourdhui(), horizonSorties: ajouterJours(aujourdhui(), 60), activites: S.cache.activites, mesActivites: mes })) {
     const k = b.col + '|' + b.key; if (actifs.has(k)) continue;
     actifs.add(k); listen(b.col, b.key, b.filtre, b.opts);
@@ -69,7 +70,7 @@ function demarrer() {
   if (S.user && S.user.role === 'admin') minuteurPurge = setTimeout(sec.purger, 5000);
   synchroniser();
 }
-function arreter() { clearTimeout(minuteurPurge); unsubs.forEach(u => u()); unsubs = []; parts = {}; actifs = new Set(); S.pret = new Set(); S.rechGlobale = false; S.compteurs = {}; S.compteursNav = -1; COLS_ECOUTE.forEach(c => { S.cache[c] = []; }); }
+function arreter() { clearTimeout(minuteurPurge); unsubs.forEach(u => u()); unsubs = []; parts = {}; actifs = new Set(); S.pret = new Set(); S.rechGlobale = false; S.matPersonnes = false; S.matHisto = null; S.ongletMat = 'inventaire'; S.fEmprunt = 'encours'; S.anMat = ''; S.rechMat = ''; S.fCatMat = ''; S.fEmpMat = ''; S.fSaisonMat = ''; S.fSigMat = false; S.compteurs = {}; S.compteursNav = -1; COLS_ECOUTE.forEach(c => { S.cache[c] = []; }); }
 
 /* ---------- Écrans ---------- */
 function ecranConnexion() {
@@ -98,7 +99,7 @@ function nav() {
     `<button class="nav-btn nav-compte" data-action="compte"><span aria-hidden="true" style="width:20px;text-align:center">☰</span><span>Compte</span></button>` +
     `<div class="foot"><div>${esc(S.user.nom)}</div><div style="font-size:12px;opacity:.7">Version ${VERSION}</div>${MODE_REEL ? '<button class="nav-btn" style="padding:6px 0;font-size:13px" data-action="mdp-form">Mon mot de passe</button>' : ''}${pwa.boutonInstaller()}<button class="nav-btn" style="padding:6px 0" data-action="logout">Se déconnecter</button>${MODE_REEL ? '' : '<button class="nav-btn" style="padding:6px 0;font-size:13px" data-action="reset-demo">Remettre les données de démonstration</button>'}</div>`;
 }
-const VUES = { home: core.accueil, seniors: core.seniors, taches: core.taches, planning: core.planning, bilans: core.bilans, activites: act.activites, activite: act.activite, annuaire: ann.annuaire, partenaires: part.partenaires, mespart: part.espacePartenaire, equipe: eq.equipe, sauvegarde: sec.securite, parametres: pa.parametres };
+const VUES = { home: core.accueil, seniors: core.seniors, taches: core.taches, planning: core.planning, bilans: core.bilans, activites: act.activites, activite: act.activite, annuaire: ann.annuaire, partenaires: part.partenaires, mespart: part.espacePartenaire, materiel: mat.materiel, equipe: eq.equipe, sauvegarde: sec.securite, parametres: pa.parametres };
 
 setRender(() => {
   synchroniser();
@@ -115,12 +116,13 @@ setRender(() => {
   if (S.view === 'seniors') core.afterSeniors();
   if (S.view === 'annuaire') ann.apresAnnuaire();
   if (S.view === 'partenaires') part.apresPartenaires();
+  if (S.view === 'materiel') mat.apresMateriel();
   if (S.view === 'sauvegarde') sec.apresSecurite();
 });
 
 /* ---------- Événements ---------- */
 const actions = {
-  ...core.actions, ...act.actions, ...eq.actions, ...ann.actions, ...part.actions, ...sec.actions, ...pa.actions, ...imp.actions, ...pwa.actions,
+  ...core.actions, ...act.actions, ...eq.actions, ...ann.actions, ...part.actions, ...mat.actions, ...sec.actions, ...pa.actions, ...imp.actions, ...pwa.actions,
   'rech-globale': () => rechGlobale(),
   close: () => closeModal(),
   compte: () => {
@@ -167,7 +169,7 @@ async function rechGlobale() {
   <p class="sub">Choisissez un résultat pour ouvrir sa fiche.</p>`);
   const champ = $('#rg'); if (champ) champ.focus();
 }
-const changes = { ...core.changes, ...act.changes, ...ann.changes, ...part.changes };
+const changes = { ...core.changes, ...act.changes, ...ann.changes, ...part.changes, ...mat.changes };
 
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-action]'); if (!el || el.tagName === 'INPUT' && el.type === 'checkbox') return;

@@ -34,7 +34,7 @@ function backendDemo() {
     if (!data) data = donneesDemo();
     charger_users();
   };
-  const charger_users = () => { data.corbeille = data.corbeille || []; data.journal = data.journal || []; data.parametres = data.parametres || []; data.contacts = data.contacts || []; data.echanges = data.echanges || []; data.conventions = data.conventions || [];
+  const charger_users = () => { data.corbeille = data.corbeille || []; data.journal = data.journal || []; data.parametres = data.parametres || []; data.contacts = data.contacts || []; data.echanges = data.echanges || []; data.conventions = data.conventions || []; data.materiel = data.materiel || []; data.emprunts = data.emprunts || []; data.mouvements = data.mouvements || [];
     if (!data.users || !data.users.length) data.users = Object.values(comptes).map(c => ({ id: c.uid, email: c.email, nom: c.nom, role: c.role, activites: c.activites, partenaireId: c.partenaireId || '', partenaireNom: c.partenaireNom || '' })); };
   const sauver = () => { try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) { /* stockage indisponible : on garde en mémoire */ } };
   const notifier = col => (ecoute[col] || new Set()).forEach(f => f());
@@ -77,7 +77,7 @@ function backendDemo() {
     async creerCompte(email) { return 'demo-' + uid(); },
     async changerMdp() { /* démonstration : pas de mot de passe */ },
     async resetMdp() { /* démonstration : aucun e-mail envoyé */ },
-    async reset() { data = donneesDemo(); charger_users(); sauver(); COLS.concat(['users', 'corbeille', 'journal', 'parametres', 'contacts', 'echanges', 'conventions']).forEach(notifier); }
+    async reset() { data = donneesDemo(); charger_users(); sauver(); COLS.concat(['users', 'corbeille', 'journal', 'parametres', 'contacts', 'echanges', 'conventions', 'materiel', 'emprunts', 'mouvements']).forEach(notifier); }
   };
 }
 

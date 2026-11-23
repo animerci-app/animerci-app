@@ -94,5 +94,26 @@ export function donneesDemo() {
   const conventions = [
     { id: 'v-1', partenaireId: 'c-med', partenaire: 'Médiathèque municipale', intitule: 'Convention de partenariat', statut: 'signee', signature: plusJours(-300), echeance: plusJours(15), emplacement: 'Classeur « Conventions » (fictif)', note: '', par: 'Démonstration' }
   ];
-  return { seniors, activites, inscriptions, seances, fiches, taches, contacts, echanges, conventions };
+  // Matériel (lot A) : articles, emprunts et mouvements fictifs, dates relatives à aujourd'hui
+  const sans = { peremption: 'aucun', lots: [], datePeremption: '', peremptionPar: '', peremptionLe: '', manquant: false, echeance: '', modifiePar: 'Démonstration', modifieLe: plusJours(-30), commentaire: '' };
+  const materiel = [
+    { ...sans, id: 'm-ass', type: 'objet', nom: 'Assiettes blanches', categorie: 'Assiettes', quantite: 60, seuil: 40, bas: false, emplacement: 'Cuisine', etat: 'bon', commentaire: 'Service de 60 (fictif)' },
+    { ...sans, id: 'm-ver', type: 'objet', nom: 'Verres à pied', categorie: 'Verres', quantite: 18, seuil: 24, bas: true, emplacement: 'Cuisine', etat: 'bon' },
+    { ...sans, id: 'm-pla', type: 'objet', nom: 'Plateaux de service', categorie: 'Plateaux', quantite: 12, seuil: 0, bas: false, emplacement: 'Local de rangement', etat: 'reparer', commentaire: 'Deux plateaux au bord abîmé (fictif)' },
+    { ...sans, id: 'm-caf', type: 'reserve', nom: 'Café moulu', categorie: 'Café', unite: 'paquet(s)', quantite: 3, seuil: 4, bas: true, emplacement: 'Réserve', peremption: 'article', datePeremption: plusJours(120), peremptionPar: 'Démonstration', peremptionLe: plusJours(-10), echeance: plusJours(120) },
+    { ...sans, id: 'm-bis', type: 'reserve', nom: 'Biscuits secs', categorie: 'Biscuits', unite: 'boîte(s)', quantite: 9, seuil: 5, bas: false, emplacement: 'Réserve', peremption: 'lot', echeance: plusJours(12),
+      lots: [{ id: 'l-1', libelle: 'Lot n° 1 (achat de septembre)', quantite: 4, date: plusJours(12), par: 'Démonstration', le: plusJours(-45) }, { id: 'l-2', libelle: 'Lot n° 2 (don)', quantite: 5, date: plusJours(200), par: 'Démonstration', le: plusJours(-9) }] },
+    { ...sans, id: 'm-jus', type: 'reserve', nom: 'Jus de pomme', categorie: 'Jus', unite: 'bouteille(s)', quantite: 6, seuil: 0, bas: false, emplacement: 'Réserve', peremption: 'article', datePeremption: plusJours(-2), peremptionPar: 'Démonstration', peremptionLe: plusJours(-60), echeance: plusJours(-2) },
+    { ...sans, id: 'm-noel', type: 'caisse', nom: 'Guirlandes et boules', numero: '1', saison: 'Noël', contenu: 'Guirlandes dorées, boules rouges (fictif)', quantite: 6, seuil: 0, bas: false, emplacement: 'Local de rangement', etat: 'bon' },
+    { ...sans, id: 'm-pri', type: 'caisse', nom: 'Fleurs en papier', numero: '2', saison: 'Printemps', contenu: 'Fleurs en papier et ruban (fictif)', quantite: 1, seuil: 0, bas: false, emplacement: 'Local de rangement', etat: 'bon' }
+  ];
+  const emprunts = [
+    { id: 'em-1', materielId: 'm-ver', materielNom: 'Verres à pied', quantite: 6, emprunteurType: 'contact', emprunteurId: 'c-par', emprunteur: 'Association Les Jardins d\'Hiver', dateSortie: plusJours(-20), retourPrevu: plusJours(-5), retourReel: '', etatRetour: '', rendu: false, commentaire: 'Pot de fin d\'année (fictif)', par: 'Démonstration', parUid: '' },
+    { id: 'em-2', materielId: 'm-pla', materielNom: 'Plateaux de service', quantite: 4, emprunteurType: 'libre', emprunteurId: '', emprunteur: 'Service jeunesse', dateSortie: plusJours(-45), retourPrevu: plusJours(-40), retourReel: plusJours(-40), etatRetour: 'bon', rendu: true, commentaire: '', par: 'Démonstration', parUid: '' }
+  ];
+  const mouvements = [
+    { id: 'mv-1', materielId: 'm-caf', materielNom: 'Café moulu', date: plusJours(-10), sens: 'entree', quantite: 6, lot: '', motif: 'Achat', note: '', apres: 6, par: 'Démonstration', parUid: '', creeLe: plusJours(-10) + 'T09:00:00.000Z' },
+    { id: 'mv-2', materielId: 'm-caf', materielNom: 'Café moulu', date: plusJours(-3), sens: 'sortie', quantite: 3, lot: '', motif: 'Atelier', note: '', apres: 3, par: 'Démonstration', parUid: '', creeLe: plusJours(-3) + 'T14:00:00.000Z' }
+  ];
+  return { seniors, activites, inscriptions, seances, fiches, taches, contacts, echanges, conventions, materiel, emprunts, mouvements };
 }

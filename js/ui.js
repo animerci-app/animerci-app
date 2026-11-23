@@ -4,7 +4,7 @@ import { uid } from './logic.js';
 
 export const S = {
   user: null,
-  cache: { seniors: [], activites: [], inscriptions: [], seances: [], fiches: [], taches: [], contacts: [], echanges: [], conventions: [], users: [], corbeille: [], journal: [], parametres: [] },
+  cache: { seniors: [], activites: [], inscriptions: [], seances: [], fiches: [], taches: [], contacts: [], echanges: [], conventions: [], materiel: [], emprunts: [], mouvements: [], users: [], corbeille: [], journal: [], parametres: [] },
   view: 'home', actId: null, tab: 'inscriptions',
   rules: { moins: true, abs: true, res: false },
   moisPlan: null, nbMois: 1, appel: null, filtreTache: 'Toutes', filtreStatutTache: 'tous', recherche: '', filtreStatut: 'tous', filtreContact: 'Tous',
@@ -84,7 +84,7 @@ export function sauver(col, doc, msg) {
 }
 
 /* ---- Journal des modifications et corbeille (30 jours) ---- */
-export const TYPES_OBJET = { seniors: 'Personne', activites: 'Activité', taches: 'Tâche', inscriptions: 'Inscription', seances: 'Appel', fiches: 'Fiche de sortie', users: 'Accès équipe', parametres: 'Paramètres', contacts: 'Contact', echanges: 'Échange avec un partenaire', conventions: 'Convention', corbeille: 'Corbeille' };
+export const TYPES_OBJET = { seniors: 'Personne', activites: 'Activité', taches: 'Tâche', inscriptions: 'Inscription', seances: 'Appel', fiches: 'Fiche de sortie', users: 'Accès équipe', parametres: 'Paramètres', contacts: 'Contact', echanges: 'Échange avec un partenaire', conventions: 'Convention', materiel: 'Matériel', emprunts: 'Emprunt de matériel', mouvements: 'Mouvement de stock', corbeille: 'Corbeille' };
 export function etiquette(col, d) {
   const act = id => (S.cache.activites.find(a => a.id === id) || {}).nom || '';
   if (col === 'seniors') return `${d.prenom || ''} ${d.nom || ''}`.trim();
@@ -97,6 +97,9 @@ export function etiquette(col, d) {
   if (col === 'parametres') return 'Paramètres généraux';
   if (col === 'contacts') return `${d.nom || ''}${d.precision ? ' · ' + d.precision : ''}${d.categorie ? ' (' + d.categorie + ')' : ''}`;
   if (col === 'echanges') return `${d.objet || ''} — ${d.interne ? 'équipe de la résidence' : d.partenaire || ''}${d.date ? ' (' + d.date + ')' : ''}`;
+  if (col === 'materiel') return `${d.type === 'caisse' && d.numero ? 'Caisse n° ' + d.numero + ' — ' : ''}${d.nom || ''}${d.categorie ? ' (' + d.categorie + ')' : ''}`;
+  if (col === 'emprunts') return `${d.materielNom || ''} × ${d.quantite || ''} — ${d.emprunteur || ''}${d.dateSortie ? ' (sorti le ' + d.dateSortie + ')' : ''}`;
+  if (col === 'mouvements') return `${d.sens === 'entree' ? 'Entrée' : 'Sortie'} de ${d.quantite || ''} — ${d.materielNom || ''}${d.lot ? ' (' + d.lot + ')' : ''}`;
   if (col === 'corbeille') return d.label || '';
   if (col === 'conventions') return `${d.intitule || ''} — ${d.partenaire || ''}`;
   return '';

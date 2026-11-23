@@ -6,6 +6,7 @@ rules_version = '2';
 //                   peut enregistrer un appel mais PAS le valider
 //  - benevole     : lit uniquement les activités (planning)
 //  - partenaire   : (accès ouvert par l'administratrice, p. ex. pour un essai) lit et saisit SES propres échanges, rien d'autre
+//  - matériel (v1.17.0) : l'administratrice, les intervenant·es et les bénévoles lisent et saisissent le matériel, les emprunts et les mouvements de stock ; seule l'administratrice supprime
 // Les comptes et leurs rôles (collection "users") sont créés dans la console Firebase.
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -73,6 +74,24 @@ service cloud.firestore {
       allow delete: if estAdmin();
     }
     match /conventions/{id} { allow read, write: if estAdmin(); }
+
+    // Matériel, réserves, caisses de décorations, emprunts et mouvements de stock (v1.17.0). Aucune donnée de santé, aucune photo.
+    // Toute l'équipe (admin, intervenant, bénévole) lit, crée et modifie : chaque ligne garde « saisi par ». Seule l'administratrice supprime (la corbeille est réservée à l'admin).
+    // Le partenaire n'y a pas accès. Les mouvements de stock ne se modifient pas (historique).
+    function equipeMateriel() { return role() in ['admin', 'intervenant', 'benevole']; }
+    match /materiel/{id} {
+      allow read, create, update: if equipeMateriel();
+      allow delete: if estAdmin();
+    }
+    match /emprunts/{id} {
+      allow read, create, update: if equipeMateriel();
+      allow delete: if estAdmin();
+    }
+    match /mouvements/{id} {
+      allow read, create: if equipeMateriel();
+      allow update: if false;
+      allow delete: if estAdmin();
+    }
 
     // Paramètres de l'outil (noms, listes, durées, modules) : lisibles par tout rôle connu, modifiables par l'admin seule
     match /parametres/{id} {

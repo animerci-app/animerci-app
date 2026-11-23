@@ -363,7 +363,7 @@ export function programme(activites, du, au) {
   return { mois, regulieres };
 }
 // Alertes de l'accueil, calculées sur les données déjà chargées (aucune lecture en plus)
-export function alertesAccueil({ activites, inscriptions, seances, taches, auj, echanges = [], conventions = [], joursConv = 30 }) {
+export function alertesAccueil({ activites, inscriptions, seances, taches, auj, echanges = [], conventions = [], joursConv = 30, materiel = [], emprunts = [], joursPeremption = 30 }) {
   const A = [], nomAct = id => (activites.find(a => a.id === id) || {}).nom;
   const ouvertes = taches.filter(t => !t.done);
   const retard = ouvertes.filter(t => t.echeance && t.echeance < auj).sort((x, y) => x.echeance.localeCompare(y.echeance));
@@ -375,6 +375,7 @@ export function alertesAccueil({ activites, inscriptions, seances, taches, auj, 
   const val = {}; for (const s of seances) if (!s.valide) val[s.activiteId] = (val[s.activiteId] || 0) + 1;
   for (const [id, n] of Object.entries(val)) if (nomAct(id)) A.push({ niveau: 'info', texte: `${n} appel${n > 1 ? 's' : ''} à valider : ${nomAct(id)}`, act: id });
   A.push(...alertesPartenaires({ echanges, conventions, auj, joursConv }));
+  A.push(...alertesMateriel({ materiel, emprunts, auj, joursPeremption }));
   return A;
 }
 
@@ -444,4 +445,217 @@ export function texteMessagePartenaire({ type, referent, objet, quand, signature
   const debut = referent ? `Bonjour ${referent},` : 'Bonjour,';
   if (type === 'invitation') return [debut, '', `Nous avons le plaisir de vous inviter${objet ? ' à « ' + objet + ' »' : ''}${quand ? ' (' + quand + ')' : ''}.`, 'Pourriez-vous nous confirmer votre présence ?', '', 'Cordialement,', signature || ''].join('\n');
   return [debut, '', `Je me permets de revenir vers vous au sujet de « ${objet || 'notre échange précédent'} ».`, 'Pouvez-vous nous indiquer où en est ce dossier ?', '', 'Cordialement,', signature || ''].join('\n');
+}
+
+/* ---------- Lot A (v1.17.0) : matériel, réserves, caisses de décorations, emprunts ---------- */
+// Tout est écrit pour l'ORGANISATION du service (qui, quoi, où, quand) : aucune donnée de santé, aucune photo (le stockage de fichiers est payant).
+// Un article = un document « materiel » de type objet (inventaire), reserve (stock qui se consomme) ou caisse (décorations rangées par saison).
+export const TYPES_MATERIEL = { objet: 'Inventaire', reserve: 'Réserve', caisse: 'Caisse de décorations' };
+export const ETATS_MATERIEL = { bon: 'Bon état', use: 'Usé', reparer: 'À réparer', manquant: 'Manquant', hs: 'Hors d\'usage' };
+export const MODES_PEREMPTION = { aucun: 'Pas de date de péremption', article: 'Une date pour tout l\'article', lot: 'Par lot (plusieurs dates)' };
+export const MOTIFS_MOUVEMENT = {
+  entree: ['Achat', 'Don', 'Retour d\'un événement', 'Correction d\'inventaire', 'Autre'],
+  sortie: ['Atelier', 'Événement ou repas', 'Consommation courante', 'Jeté (périmé)', 'Perte ou casse', 'Correction d\'inventaire', 'Autre']
+};
+const ISO_JOUR = /^\d{4}-\d{2}-\d{2}$/;
+const arrondi = n => Math.round(n * 100) / 100;
+/** Nombre saisi (virgule ou point) ; NaN si vide ou illisible. */
+export function lireNombre(v) { if (typeof v === 'number') return v; const s = String(v == null ? '' : v).trim().replace(/\s/g, '').replace(',', '.'); return s === '' ? NaN : Number(s); }
+/** Quantité affichée à la française (2,5). */
+export const fmtQte = n => String(arrondi(Number(n) || 0)).replace('.', ',');
+
+/** Lots d'une réserve suivie « par lot » (sinon liste vide). */
+export const lotsDe = m => (m && m.type === 'reserve' && m.peremption === 'lot' && Array.isArray(m.lots) ? m.lots : []);
+/** Quantité d'un article : somme des lots en suivi « par lot », sinon la quantité saisie. */
+export const quantiteTotale = m => (m && m.type === 'reserve' && m.peremption === 'lot' ? arrondi(lotsDe(m).reduce((n, l) => n + (Number(l.quantite) || 0), 0)) : Number(m && m.quantite) || 0);
+/** Dates de péremption encore utiles (il en reste) : une par lot, ou une pour l'article entier. */
+export function peremptions(m) {
+  if (!m || m.type !== 'reserve') return [];
+  if (m.peremption === 'lot') return lotsDe(m).filter(l => l.date && Number(l.quantite) > 0).map(l => ({ date: l.date, quantite: Number(l.quantite), lot: l.libelle || 'lot', lotId: l.id }));
+  if (m.peremption === 'article' && m.datePeremption && quantiteTotale(m) > 0) return [{ date: m.datePeremption, quantite: quantiteTotale(m), lot: '', lotId: '' }];
+  return [];
+}
+/** Champs calculés enregistrés avec l'article (ils servent aux alertes de l'accueil, sans tout lire) : quantité, stock bas, manquant, plus proche péremption. */
+export function derivesMateriel(m) {
+  const quantite = quantiteTotale(m), seuil = Number(m.seuil) || 0, dates = peremptions(m).map(p => p.date).sort();
+  return { quantite, bas: m.type !== 'caisse' && seuil > 0 && quantite <= seuil, manquant: m.type !== 'reserve' && m.etat === 'manquant', echeance: dates[0] || '' };
+}
+/** Texte clair, lisible par toute l'équipe : QUI a relevé la date de péremption, QUAND, et ce qu'elle concerne (un lot ou l'article entier). */
+export function textesPeremption(m) {
+  if (!m || m.type !== 'reserve') return [];
+  const qui = (par, le) => `relevée${le ? ' le ' + fmtDate(le) : ''}${par ? ' par ' + par : ''}`;
+  if (m.peremption === 'article' && m.datePeremption) return [`Date de péremption ${qui(m.peremptionPar, m.peremptionLe)} : ${fmtDate(m.datePeremption)} — concerne l'article entier`];
+  if (m.peremption === 'lot') return [...lotsDe(m)].filter(l => l.date).sort((a, b) => a.date.localeCompare(b.date)).map(l => `Date de péremption ${qui(l.par, l.le)} : ${fmtDate(l.date)} — concerne le lot « ${l.libelle || 'sans nom'} » (${fmtQte(l.quantite)} ${m.unite || ''})`.replace(/\s+\)/, ')'));
+  return [];
+}
+/** Fusionne les lots saisis avec les anciens : « relevé par / le » ne change que pour un lot nouveau ou dont la date a changé. */
+export function fusionnerLots(anciens = [], saisis = [], par = '', auj = '') {
+  const parId = Object.fromEntries((anciens || []).map(l => [l.id, l]));
+  return saisis.map(s => { const a = s.id && parId[s.id], garde = a && a.date === s.date; return { id: s.id || uid(), libelle: String(s.libelle || '').trim(), quantite: arrondi(Number(s.quantite) || 0), date: s.date || '', par: garde ? a.par : par, le: garde ? a.le : auj }; });
+}
+/** Message d'erreur (ou '' si tout va bien) pour un article à enregistrer. Les nombres doivent déjà être lus (lireNombre). */
+export function erreurMateriel(m) {
+  if (!TYPES_MATERIEL[m.type]) return 'Type d\'article inconnu.';
+  if (!String(m.nom || '').trim()) return 'Donnez un nom à l\'article.';
+  if (m.type === 'caisse' && !String(m.numero || '').trim()) return 'Indiquez le numéro de la caisse.';
+  if (m.type !== 'reserve' && !ETATS_MATERIEL[m.etat || 'bon']) return 'Choisissez l\'état.';
+  const seuil = m.seuil === '' || m.seuil == null ? 0 : Number(m.seuil);
+  if (m.type !== 'caisse' && (!Number.isFinite(seuil) || seuil < 0 || seuil > 1e6)) return 'Le seuil d\'alerte doit être un nombre (0 pour aucune alerte).';
+  if (m.type === 'reserve') {
+    if (!MODES_PEREMPTION[m.peremption || 'aucun']) return 'Choisissez le suivi de péremption.';
+    if (m.peremption === 'article' && !ISO_JOUR.test(m.datePeremption || '')) return 'Indiquez la date de péremption, ou choisissez « Pas de date de péremption ».';
+    if (m.peremption === 'lot') {
+      const lots = m.lots || [];
+      if (!lots.length) return 'Ajoutez au moins un lot, ou choisissez un autre suivi de péremption.';
+      for (const l of lots) {
+        const q = Number(l.quantite);
+        if (!Number.isFinite(q) || q < 0 || q > 1e6) return 'Chaque lot doit avoir une quantité (0 ou plus).';
+        if (!ISO_JOUR.test(l.date || '')) return 'Chaque lot doit avoir une date de péremption.';
+      }
+      return '';
+    }
+  }
+  const q = Number(m.quantite);
+  if (!Number.isFinite(q) || q < 0 || q > 1e6) return 'Indiquez une quantité (0 ou plus).';
+  if (m.type !== 'reserve' && !Number.isInteger(q)) return 'La quantité doit être un nombre entier.';
+  return '';
+}
+/** Document prêt à enregistrer : champs propres au type, lots fusionnés, « relevé par / le », champs calculés, dernière modification. */
+export function preparerMateriel(m, ancien, { par = '', auj = '' } = {}) {
+  const d = { ...m };
+  if (d.type === 'reserve') {
+    d.peremption = MODES_PEREMPTION[d.peremption] ? d.peremption : 'aucun';
+    if (d.peremption === 'lot') { d.lots = fusionnerLots(ancien && ancien.lots, d.lots || [], par, auj); d.datePeremption = ''; d.peremptionPar = ''; d.peremptionLe = ''; }
+    else if (d.peremption === 'article') { const change = !ancien || ancien.datePeremption !== d.datePeremption; d.lots = []; d.peremptionPar = change ? par : (ancien.peremptionPar || par); d.peremptionLe = change ? auj : (ancien.peremptionLe || auj); }
+    else { d.lots = []; d.datePeremption = ''; d.peremptionPar = ''; d.peremptionLe = ''; }
+  } else { d.peremption = 'aucun'; d.lots = []; d.datePeremption = ''; d.peremptionPar = ''; d.peremptionLe = ''; }
+  d.seuil = d.type === 'caisse' || d.seuil === '' || d.seuil == null ? 0 : Number(d.seuil);
+  Object.assign(d, derivesMateriel(d));
+  d.modifiePar = par; d.modifieLe = auj;
+  return d;
+}
+/**
+ * Applique une entrée ou une sortie de stock à une réserve (fonction pure). mv : { sens, quantite, lotId, lotLibelle, lotDate }.
+ * En suivi « par lot » : une entrée va dans un lot existant ou crée un lot (date obligatoire) ; une sortie se fait dans un lot précis (les lots vides disparaissent).
+ * Renvoie { materiel, apres, lot } ou { erreur }. Le stock ne peut jamais devenir négatif.
+ */
+export function appliquerMouvement(m, mv, { par = '', auj = '' } = {}) {
+  if (!m || m.type !== 'reserve') return { erreur: 'Les entrées et sorties concernent les réserves.' };
+  if (mv.sens !== 'entree' && mv.sens !== 'sortie') return { erreur: 'Choisissez entrée ou sortie.' };
+  const n = arrondi(Number(mv.quantite));
+  if (!Number.isFinite(n) || n <= 0) return { erreur: 'Indiquez une quantité supérieure à 0.' };
+  if (mv.lotDate && !ISO_JOUR.test(mv.lotDate)) return { erreur: 'Date de péremption invalide.' };
+  const base = { ...m }; let lot = '';
+  if (m.peremption === 'lot') {
+    let lots = (m.lots || []).map(l => ({ ...l }));
+    if (mv.sens === 'entree') {
+      if (mv.lotId) {
+        const l = lots.find(x => x.id === mv.lotId); if (!l) return { erreur: 'Lot introuvable.' };
+        l.quantite = arrondi((Number(l.quantite) || 0) + n); lot = l.libelle;
+        if (mv.lotDate && mv.lotDate !== l.date) { l.date = mv.lotDate; l.par = par; l.le = auj; }
+      } else {
+        if (!ISO_JOUR.test(mv.lotDate || '')) return { erreur: 'Indiquez la date de péremption du nouveau lot.' };
+        lot = String(mv.lotLibelle || '').trim() || `Lot du ${fmtDate(auj)}`;
+        lots.push({ id: uid(), libelle: lot, quantite: n, date: mv.lotDate, par, le: auj });
+      }
+    } else {
+      const l = lots.find(x => x.id === mv.lotId); if (!l) return { erreur: 'Choisissez le lot concerné.' };
+      if (n > l.quantite) return { erreur: `Stock insuffisant dans ce lot : il en reste ${fmtQte(l.quantite)}.` };
+      l.quantite = arrondi(l.quantite - n); lot = l.libelle; lots = lots.filter(x => x.quantite > 0);
+    }
+    base.lots = lots;
+  } else {
+    const q = Number(m.quantite) || 0;
+    if (mv.sens === 'sortie' && n > q) return { erreur: `Stock insuffisant : il en reste ${fmtQte(q)}.` };
+    base.quantite = arrondi(mv.sens === 'entree' ? q + n : q - n);
+    if (mv.sens === 'entree' && m.peremption === 'article' && mv.lotDate && mv.lotDate !== m.datePeremption) { base.datePeremption = mv.lotDate; base.peremptionPar = par; base.peremptionLe = auj; }
+  }
+  base.modifiePar = par; base.modifieLe = auj;
+  const d = derivesMateriel(base);
+  return { materiel: { ...base, ...d }, apres: d.quantite, lot };
+}
+
+/* ----- Emprunts ----- */
+/** Quantité actuellement prêtée d'un article (emprunts non rendus). `sauf` : emprunt à ne pas compter (celui qu'on modifie). */
+export const pretes = (m, emprunts, sauf = '') => arrondi((emprunts || []).filter(e => e.materielId === m.id && !e.rendu && e.id !== sauf).reduce((n, e) => n + (Number(e.quantite) || 0), 0));
+export const disponible = (m, emprunts, sauf = '') => Math.max(0, arrondi((Number(m.quantite) || 0) - pretes(m, emprunts, sauf)));
+/** Message d'erreur (ou '') pour un emprunt à enregistrer. */
+export function erreurEmprunt(e, m, emprunts) {
+  if (!m) return 'Choisissez le matériel emprunté.';
+  if (m.type === 'reserve') return 'Une réserve ne se prête pas : utilisez « Sortie » pour la consommer.';
+  const q = Number(e.quantite);
+  if (!Number.isInteger(q) || q < 1) return 'Indiquez une quantité entière (1 ou plus).';
+  if (!String(e.emprunteur || '').trim()) return 'Indiquez qui emprunte : une personne, un service ou une structure.';
+  if (!ISO_JOUR.test(e.dateSortie || '')) return 'Indiquez la date de sortie.';
+  if (!ISO_JOUR.test(e.retourPrevu || '')) return 'Indiquez la date de retour prévue.';
+  if (e.retourPrevu < e.dateSortie) return 'Le retour prévu ne peut pas être avant la date de sortie.';
+  if (!e.rendu) { const dispo = disponible(m, emprunts, e.id); if (q > dispo) return dispo ? `Quantité indisponible : il n'en reste que ${fmtQte(dispo)} à prêter.` : 'Plus rien à prêter : tout est déjà sorti.'; }
+  return '';
+}
+/**
+ * Enregistre un retour (complet ou partiel). Renvoie { clos, reste } : `clos` est l'emprunt soldé (quantité rendue), `reste` l'emprunt qui demeure ouvert
+ * pour ce qui n'a pas été rendu (null si tout est rendu), ou { erreur }.
+ */
+export function solderEmprunt(e, { quantiteRendue, date, etat = 'bon' }) {
+  const q = Number(e.quantite), r = Number(quantiteRendue);
+  if (!Number.isInteger(r) || r < 1 || r > q) return { erreur: `La quantité rendue doit être comprise entre 1 et ${fmtQte(q)}.` };
+  if (!ISO_JOUR.test(date || '')) return { erreur: 'Indiquez la date de retour.' };
+  if (date < e.dateSortie) return { erreur: 'Le retour ne peut pas être avant la date de sortie.' };
+  if (!ETATS_MATERIEL[etat]) return { erreur: 'Choisissez l\'état du matériel au retour.' };
+  const clos = { ...e, quantite: r, rendu: true, retourReel: date, etatRetour: etat };
+  const reste = r < q ? { ...e, id: undefined, quantite: q - r, rendu: false, retourReel: '', etatRetour: '', commentaire: [e.commentaire, `Reste d'un retour partiel du ${fmtDate(date)}`].filter(Boolean).join(' — ') } : null;
+  if (reste) delete reste.id;
+  return { clos, reste };
+}
+export function statutEmprunt(e, auj) { return e.rendu ? 'rendu' : e.retourPrevu && e.retourPrevu < auj ? 'retard' : 'encours'; }
+export const joursDeRetard = (e, auj) => Math.max(0, Math.round((new Date(auj + 'T12:00:00') - new Date(e.retourPrevu + 'T12:00:00')) / 864e5));
+
+/* ----- Alertes (accueil et écran Matériel) ----- */
+export function alertesMateriel({ materiel = [], emprunts = [], auj, joursPeremption = 30 }) {
+  const A = [], liste = (t, f) => t.slice(0, 3).map(f).join(', ') + (t.length > 3 ? '…' : ''), s = n => (n > 1 ? 's' : '');
+  const horizon = plusJ(auj, joursPeremption), tabDe = m => (m.type === 'reserve' ? 'reserves' : m.type === 'caisse' ? 'caisses' : 'inventaire');
+  const nomP = p => p.m.nom + (p.lot ? ` (${p.lot})` : '');
+  const per = []; for (const m of materiel) for (const p of peremptions(m)) per.push({ m, ...p });
+  const perimes = per.filter(p => p.date < auj).sort((a, b) => a.date.localeCompare(b.date)), bientot = per.filter(p => p.date >= auj && p.date <= horizon).sort((a, b) => a.date.localeCompare(b.date));
+  if (perimes.length) A.push({ niveau: 'crit', texte: `${perimes.length} produit${s(perimes.length)} périmé${s(perimes.length)} : ${liste(perimes, p => `${nomP(p)} (${fmtDate(p.date).slice(0, 5)})`)}`, vue: 'materiel', tab: 'reserves' });
+  if (bientot.length) A.push({ niveau: 'warn', texte: `${bientot.length} produit${s(bientot.length)} à consommer dans les ${joursPeremption} jours : ${liste(bientot, p => `${nomP(p)} (${fmtDate(p.date).slice(0, 5)})`)}`, vue: 'materiel', tab: 'reserves' });
+  for (const tab of ['reserves', 'inventaire']) {
+    const bas = materiel.filter(m => tabDe(m) === tab && derivesMateriel(m).bas), vide = bas.filter(m => quantiteTotale(m) === 0), faible = bas.filter(m => quantiteTotale(m) > 0);
+    const ou = tab === 'reserves' ? 'réserve' : 'inventaire';
+    if (vide.length) A.push({ niveau: 'crit', texte: `${vide.length} article${s(vide.length)} épuisé${s(vide.length)} (${ou}) : ${liste(vide, m => m.nom)}`, vue: 'materiel', tab });
+    if (faible.length) A.push({ niveau: 'warn', texte: `${faible.length} article${s(faible.length)} en stock bas (${ou}) : ${liste(faible, m => `${m.nom} (${fmtQte(quantiteTotale(m))}${m.unite && m.unite !== 'unité(s)' ? ' ' + m.unite : ''})`)}`, vue: 'materiel', tab });
+  }
+  const retard = emprunts.filter(e => !e.rendu && e.retourPrevu && e.retourPrevu < auj).sort((a, b) => a.retourPrevu.localeCompare(b.retourPrevu));
+  if (retard.length) A.push({ niveau: 'crit', texte: `${retard.length} emprunt${s(retard.length)} en retard : ${liste(retard, e => `${e.materielNom} (${e.emprunteur})`)}`, vue: 'materiel', tab: 'emprunts' });
+  const manq = materiel.filter(m => derivesMateriel(m).manquant);
+  if (manq.length) A.push({ niveau: 'warn', texte: `${manq.length} matériel${manq.length > 1 ? 's' : ''} déclaré${s(manq.length)} manquant${s(manq.length)} : ${liste(manq, m => m.nom)}`, vue: 'materiel', tab: manq.every(m => m.type === 'caisse') ? 'caisses' : 'inventaire' });
+  return A;
+}
+
+/* ----- Tableaux pour les exports Excel / PDF et la sauvegarde ----- */
+export function tableauxMateriel({ materiel = [], emprunts = [], mouvements = [] }, auj = '') {
+  const tri = (a, b) => String(a).localeCompare(String(b), 'fr'), par = t => materiel.filter(m => m.type === t);
+  const e = v => (v ? ETATS_MATERIEL[v] || v : '');
+  const reserves = [];
+  for (const m of [...par('reserve')].sort((a, b) => tri((a.categorie || '') + a.nom, (b.categorie || '') + b.nom))) {
+    const base = [m.nom, m.categorie || '', m.unite || ''], fin = [m.seuil || '', m.emplacement || '', m.commentaire || ''];
+    if (m.peremption === 'lot' && lotsDe(m).length) for (const l of lotsDe(m)) reserves.push([...base, Number(l.quantite) || 0, 'Par lot', fmtDate(l.date), `Lot « ${l.libelle || 'sans nom'} »`, fmtDate(l.le), l.par || '', ...fin]);
+    else reserves.push([...base, quantiteTotale(m), MODES_PEREMPTION[m.peremption || 'aucun'], fmtDate(m.datePeremption), m.datePeremption ? 'Article entier' : '', fmtDate(m.peremptionLe), m.peremptionPar || '', ...fin]);
+  }
+  return [
+    { nom: 'Inventaire', titre: 'Inventaire du matériel (vaisselle, décorations, matériel créatif et de loisirs, équipements)',
+      cols: ['Article', 'Catégorie', 'Quantité', 'Prêtée', 'Disponible', 'Seuil d\'alerte', 'Emplacement', 'État', 'Commentaire', 'Modifié par', 'Le'],
+      rows: [...par('objet')].sort((a, b) => tri((a.categorie || '') + a.nom, (b.categorie || '') + b.nom)).map(m => [m.nom, m.categorie || '', Number(m.quantite) || 0, pretes(m, emprunts), disponible(m, emprunts), m.seuil || '', m.emplacement || '', e(m.etat), m.commentaire || '', m.modifiePar || '', fmtDate(m.modifieLe)]) },
+    { nom: 'Réserves', titre: 'Réserves alimentaires, boissons et fournitures (une ligne par lot quand le suivi est « par lot »)',
+      cols: ['Article', 'Catégorie', 'Unité', 'Quantité', 'Suivi de péremption', 'Date de péremption', 'Concerne', 'Relevée le', 'Relevée par', 'Seuil d\'alerte', 'Emplacement', 'Commentaire'], rows: reserves },
+    { nom: 'Caisses', titre: 'Caisses de décorations saisonnières',
+      cols: ['N° de caisse', 'Nom', 'Saison', 'Contenu', 'Quantité', 'Emplacement', 'État', 'Commentaire'],
+      rows: [...par('caisse')].sort((a, b) => tri(a.saison || '', b.saison || '') || tri(a.numero, b.numero)).map(m => [m.numero, m.nom, m.saison || '', m.contenu || '', Number(m.quantite) || 0, m.emplacement || '', e(m.etat), m.commentaire || '']) },
+    { nom: 'Emprunts', titre: 'Emprunts de matériel',
+      cols: ['Matériel', 'Quantité', 'Emprunteur', 'Sortie le', 'Retour prévu', 'Retour réel', 'État au retour', 'Situation', 'Commentaire', 'Saisi par'],
+      rows: [...emprunts].sort((a, b) => (b.dateSortie || '').localeCompare(a.dateSortie || '')).map(x => [x.materielNom, Number(x.quantite) || 0, x.emprunteur, fmtDate(x.dateSortie), fmtDate(x.retourPrevu), fmtDate(x.retourReel), e(x.etatRetour), { rendu: 'Rendu', retard: 'En retard', encours: 'En cours' }[statutEmprunt(x, auj || '9999-12-31')], x.commentaire || '', x.par || '']) },
+    { nom: 'Mouvements de stock', titre: 'Entrées et sorties de stock des réserves',
+      cols: ['Date', 'Article', 'Sens', 'Quantité', 'Lot', 'Motif', 'Précision', 'Stock après', 'Saisi par'],
+      rows: [...mouvements].sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.creeLe || '').localeCompare(a.creeLe || '')).map(v => [fmtDate(v.date), v.materielNom, v.sens === 'entree' ? 'Entrée' : 'Sortie', Number(v.quantite) || 0, v.lot || '', v.motif || '', v.note || '', v.apres == null ? '' : v.apres, v.par || '']) }
+  ];
 }
