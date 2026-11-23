@@ -1,7 +1,7 @@
 // Écran « Sécurité » : Sauvegarde, Corbeille (30 jours), Journal des modifications, listes d'émargement papier.
 import { store } from './store.js';
 import * as L from './logic.js';
-import { S, esc, render, toast, aujourdhui, ajouterJours, journaliser, TYPES_OBJET } from './ui.js';
+import { S, esc, render, toast, aujourdhui, ajouterJours, journaliser, confirmer, patienter, TYPES_OBJET } from './ui.js';
 import { P } from './parametres.js';
 import { sauvegarde, brancher as brancherSauvegarde, actions as actionsSauvegarde, imprimer } from './backup.js';
 
@@ -23,12 +23,12 @@ export function apresSecurite() { if (onglet === 'sauvegarde') brancherSauvegard
 /* ---------- Corbeille ---------- */
 function vueCorbeille() {
   const rows = [...S.cache.corbeille].sort((a, b) => b.date.localeCompare(a.date));
-  return `<div class="card" style="margin-bottom:14px"><p class="sub" style="margin:0">Ce que vous supprimez est gardé ${JOURS_CORBEILLE()} jours ici, puis effacé définitivement. Les <b>fiches de sortie</b> ne passent jamais par la corbeille : elles sont effacées pour de bon.</p></div>` +
+  return `<div class="card" style="margin-bottom:14px"><p class="sub" style="margin:0">Ce que vous supprimez est gardé ${JOURS_CORBEILLE()} jours ici, puis effacé définitivement. Les <b>fiches de sortie</b> ne passent jamais par la corbeille : elles sont effacées pour de bon. Vous pouvez aussi <b>supprimer définitivement</b> une ligne, ou <b>vider la corbeille</b> : c'est irréversible.</p>${rows.length ? '<div class="quick" style="margin-top:10px"><button class="btn ghost" data-action="corbeille-vider">Vider la corbeille (' + rows.length + ')</button></div>' : ''}</div>` +
     (rows.length ? rows.map(e => {
       const reste = Math.max(0, JOURS_CORBEILLE() - jours(e.date)), n = Object.values(e.liens || {}).reduce((t, l) => t + l.length, 0);
       return `<div class="cand" style="cursor:default"><span style="flex:1"><b>${esc(e.label || '(sans nom)')}</b>
         <span class="why"><span class="pill p-rose">${esc(TYPES_OBJET[e.col] || e.col)}</span><span class="pill p-bleu">Supprimé le ${esc(frHeure(e.date))}${e.par ? ' par ' + esc(e.par) : ''}</span>${n ? `<span class="pill p-rose">+ ${n} élément${n > 1 ? 's' : ''} lié${n > 1 ? 's' : ''}</span>` : ''}<span class="pill p-warn">Effacé définitivement dans ${reste} jour${reste > 1 ? 's' : ''}</span></span></span>
-        <button class="btn" data-action="corbeille-restaurer" data-id="${esc(e.id)}">Restaurer</button></div>`;
+        <span class="quick"><button class="btn" data-action="corbeille-restaurer" data-id="${esc(e.id)}">Restaurer</button><button class="btn ghost" data-action="corbeille-effacer" data-id="${esc(e.id)}">Supprimer définitivement</button></span></div>`;
     }).join('') : '<div class="empty"><b>La corbeille est vide</b>Les personnes, activités, tâches et inscriptions supprimées apparaîtront ici.</div>');
 }
 async function restaurer(id) {
@@ -38,6 +38,21 @@ async function restaurer(id) {
   await store.remove('corbeille', id);
   journaliser('Restauré', e.col, e.doc);
   toast('Restauré : ' + (e.label || ''));
+}
+
+// Suppression définitive (irréversible, après confirmation) : une ligne, ou toute la corbeille
+function effacer(id) {
+  const e = S.cache.corbeille.find(x => x.id === id); if (!e) return;
+  confirmer('Supprimer définitivement ?', `« ${e.label || '(sans nom)'} » sera effacé pour de bon${Object.values(e.liens || {}).some(l => l.length) ? ', avec les éléments liés qui étaient dans la corbeille' : ''}. Cette action est irréversible.`, 'Supprimer définitivement', async () => {
+    await store.remove('corbeille', id); journaliser('Supprimé définitivement', e.col, e.doc); toast('Supprimé définitivement');
+  });
+}
+function viderCorbeille() {
+  const rows = [...S.cache.corbeille]; if (!rows.length) return toast('La corbeille est déjà vide.');
+  confirmer('Vider la corbeille ?', `${rows.length} élément${rows.length > 1 ? 's' : ''} ser${rows.length > 1 ? 'ont' : 'a'} effacé${rows.length > 1 ? 's' : ''} pour de bon. Cette action est irréversible.`, 'Vider la corbeille', async () => {
+    await patienter((async () => { for (const e of rows) await store.remove('corbeille', e.id); })());
+    journaliser('Corbeille vidée', 'corbeille', { label: `${rows.length} élément(s)` }); toast('Corbeille vidée');
+  });
 }
 
 /* ---------- Journal ---------- */
@@ -84,6 +99,8 @@ export const actions = {
   ...actionsSauvegarde,
   'sec-tab': el => { onglet = el.dataset.v; render(); },
   'corbeille-restaurer': el => restaurer(el.dataset.id),
+  'corbeille-effacer': el => effacer(el.dataset.id),
+  'corbeille-vider': () => viderCorbeille(),
   'emargement-activite': () => impression(S.cache.activites.filter(a => a.id === S.actId)),
   'emargement-semaines': () => { const auj = aujourdhui(), fin = ajouterJours(auj, P('securite.horizonEmargementJours')); impression(S.cache.activites.filter(a => a.date && a.date >= auj && a.date <= fin).sort((a, b) => a.date.localeCompare(b.date))); }
 };

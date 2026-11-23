@@ -84,7 +84,7 @@ export function sauver(col, doc, msg) {
 }
 
 /* ---- Journal des modifications et corbeille (30 jours) ---- */
-export const TYPES_OBJET = { seniors: 'Personne', activites: 'Activité', taches: 'Tâche', inscriptions: 'Inscription', seances: 'Appel', fiches: 'Fiche de sortie', users: 'Accès équipe', parametres: 'Paramètres', contacts: 'Contact', echanges: 'Échange avec un partenaire', conventions: 'Convention' };
+export const TYPES_OBJET = { seniors: 'Personne', activites: 'Activité', taches: 'Tâche', inscriptions: 'Inscription', seances: 'Appel', fiches: 'Fiche de sortie', users: 'Accès équipe', parametres: 'Paramètres', contacts: 'Contact', echanges: 'Échange avec un partenaire', conventions: 'Convention', corbeille: 'Corbeille' };
 export function etiquette(col, d) {
   const act = id => (S.cache.activites.find(a => a.id === id) || {}).nom || '';
   if (col === 'seniors') return `${d.prenom || ''} ${d.nom || ''}`.trim();
@@ -97,6 +97,7 @@ export function etiquette(col, d) {
   if (col === 'parametres') return 'Paramètres généraux';
   if (col === 'contacts') return `${d.nom || ''}${d.precision ? ' · ' + d.precision : ''}${d.categorie ? ' (' + d.categorie + ')' : ''}`;
   if (col === 'echanges') return `${d.objet || ''} — ${d.interne ? 'équipe de la résidence' : d.partenaire || ''}${d.date ? ' (' + d.date + ')' : ''}`;
+  if (col === 'corbeille') return d.label || '';
   if (col === 'conventions') return `${d.intitule || ''} — ${d.partenaire || ''}`;
   return '';
 }

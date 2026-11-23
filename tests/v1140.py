@@ -94,7 +94,7 @@ with sync_playwright() as p:
     m.goto('http://localhost:8765/index.html'); m.wait_for_selector('text=Essayer comme administratrice'); m.click('text=Essayer comme administratrice'); m.wait_for_selector('.nav-compte')
     check(m.locator('.nav-compte').is_visible() and not m.locator('.side .foot').is_visible(),'téléphone : bouton Compte visible, pied de menu masqué')
     m.click('.nav-compte'); m.wait_for_selector('.modal button:has-text("Se déconnecter")')
-    check('Version 1.16.0' in m.inner_text('.modal') or 'version 1.16.0' in m.inner_text('.modal'),'téléphone : fenêtre Compte avec le numéro de version')
+    check('Version 1.16.1' in m.inner_text('.modal') or 'version 1.16.1' in m.inner_text('.modal'),'téléphone : fenêtre Compte avec le numéro de version')
     m.click('.modal button:has-text("Se déconnecter")'); m.wait_for_selector('text=Essayer comme administratrice')
     check(m.locator('.modal').count()==0,'téléphone : déconnexion et fenêtre fermée')
     # intervenante : Compte aussi
