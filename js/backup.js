@@ -57,8 +57,8 @@ export function tableaux({ fiches = false } = {}) {
   });
   T.push({ nom: 'Présences', titre: 'Présences aux séances (une ligne par personne et par séance)', cols: ['Activité', 'Date de la séance', 'Appel', 'Personne', 'Présence'], rows: pres });
   if (fiches) T.push({ nom: 'Fiches de sortie', titre: 'Fiches de sortie — DONNÉES SENSIBLES : à conserver sous clé',
-    cols: ['Sortie', 'Personne', 'Personne à prévenir', 'Téléphone', 'Mobilité', 'Alimentation', 'Traitement à prendre', 'Autorisation photo', 'Règlement reçu', 'Pièce d\'identité vue'],
-    rows: C.fiches.map(f => [nomAct(f.activiteId), nomSen(f.seniorId), f.contact, f.tel, f.mob, f.alim, oui(f.med), f.photo, oui(f.paye), oui(f.piece)]) });
+    cols: ['Sortie', 'Personne', 'Personne à prévenir', 'Téléphone', 'Déplacements', 'Autre information pratique', 'Autorisation photo', 'Règlement reçu', 'Pièce d\'identité vue'],
+    rows: C.fiches.map(f => [nomAct(f.activiteId), nomSen(f.seniorId), f.contact, f.tel, f.mob, f.info, f.photo, oui(f.paye), oui(f.piece)]) });
   T.push({ nom: 'Tâches', titre: 'Tâches et rappels', cols: ['Tâche', 'Catégorie', 'Responsable', 'Échéance', 'Fait', 'Répétition'],
     rows: [...C.taches].sort((a, b) => (a.echeance || '9').localeCompare(b.echeance || '9')).map(t => [t.titre, t.cat, t.responsable, fr(t.echeance), oui(t.done), REPETE[t.repete] || 'Jamais']) });
   T.push({ nom: 'Équipe', titre: 'Équipe : personnes ayant accès à l\'outil', cols: ['Nom', 'E-mail', 'Rôle', 'Activités accessibles'],
@@ -191,7 +191,7 @@ export function sauvegarde() {
   <div class="card" style="margin-bottom:14px"><b>Dernière sauvegarde depuis cet appareil :</b> ${j === null ? 'aucune' : j === 0 ? 'aujourd\'hui' : `il y a ${j} jour${j > 1 ? 's' : ''}`}
     ${MODE_REEL ? `<p class="sub" style="margin:6px 0 0"><b>Lectures estimées aujourd'hui sur cet appareil :</b> ${lecturesDuJour().toLocaleString('fr-FR')} sur ${QUOTA_LECTURES.toLocaleString('fr-FR')} (quota gratuit de tout le service ; les autres appareils comptent aussi ; estimation).</p>` : ''}
     <p class="sub" style="margin:6px 0 0">La sauvegarde lit toutes les données (quelques milliers de lectures, comptées dans le quota gratuit). Conseil : une fois par mois, et avant tout changement important.</p></div>
-  <div class="card" style="margin-bottom:14px"><label class="chk"><input type="checkbox" id="sv-fiches"> Inclure les fiches de sortie (informations de santé : alimentation, traitement…)</label>
+  <div class="card" style="margin-bottom:14px"><label class="chk"><input type="checkbox" id="sv-fiches"> Inclure les fiches de sortie (personne à prévenir, autorisations, informations pratiques)</label>
     <p class="sub" style="margin:6px 0 0">Par défaut, ces fiches ne sont pas dans la sauvegarde : elles doivent être effacées après chaque sortie. Cochez seulement si besoin.</p></div>
   <div class="card" style="margin-bottom:14px"><h2 style="margin-top:0">1. Faire la sauvegarde</h2>
     <div class="quick"><button class="btn" data-action="sv-xlsx">Excel (.xlsx)</button><button class="btn" data-action="sv-pdf">PDF / Imprimer</button><button class="btn sec" data-action="sv-word">Word (.doc)</button><button class="btn sec" data-action="sv-json">Fichier de restauration (.json)</button></div>

@@ -23,7 +23,7 @@ export function apresSecurite() { if (onglet === 'sauvegarde') brancherSauvegard
 /* ---------- Corbeille ---------- */
 function vueCorbeille() {
   const rows = [...S.cache.corbeille].sort((a, b) => b.date.localeCompare(a.date));
-  return `<div class="card" style="margin-bottom:14px"><p class="sub" style="margin:0">Ce que vous supprimez est gardé ${JOURS_CORBEILLE()} jours ici, puis effacé définitivement. Les <b>fiches de sortie</b> (santé) ne passent jamais par la corbeille : elles sont effacées pour de bon.</p></div>` +
+  return `<div class="card" style="margin-bottom:14px"><p class="sub" style="margin:0">Ce que vous supprimez est gardé ${JOURS_CORBEILLE()} jours ici, puis effacé définitivement. Les <b>fiches de sortie</b> ne passent jamais par la corbeille : elles sont effacées pour de bon.</p></div>` +
     (rows.length ? rows.map(e => {
       const reste = Math.max(0, JOURS_CORBEILLE() - jours(e.date)), n = Object.values(e.liens || {}).reduce((t, l) => t + l.length, 0);
       return `<div class="cand" style="cursor:default"><span style="flex:1"><b>${esc(e.label || '(sans nom)')}</b>

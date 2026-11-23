@@ -1,5 +1,5 @@
 # AniMerci — outil de gestion d'animation pour un service socioculturel
-**Version 1.14.1 — 23 novembre 2026** (numéro affiché en bas du menu de l'application)
+**Version 1.15.1 — 23 novembre 2026** (numéro affiché en bas du menu de l'application)
 
 Application web gratuite (aucune installation) : personnes, activités, inscriptions avec rotation équitable,
 appels de présence, fiches de sortie allégées, planning, affiche de la semaine, tâches, bilans et exports CSV.
@@ -26,7 +26,7 @@ appels de présence, fiches de sortie allégées, planning, affiche de la semain
 ## Données et RGPD (à faire confirmer par le DPO)
 - Le dépôt GitHub ne contient **aucune donnée personnelle** : uniquement le code.
 - Les données vivent dans Firestore (région Paris, europe-west9). Fournisseur : Google (hors UE pour le siège) → point à confirmer avec le DPO.
-- Fiche de sortie : aucun diagnostic, seulement des informations pratiques (mobilité, alimentation, traitement oui/non, autorisations) ; bouton « Effacer après la sortie ».
+- Fiche de sortie : personne à prévenir et téléphone, déplacements (choix d'organisation), autre information pratique (texte libre, 140 caractères, avec avertissement : aucune donnée de santé), autorisation photo, règlement, pièce d'identité ; bouton « Effacer après la sortie ».
 - Seuls les appels **validés** comptent dans les bilans.
 
 ## L'administratrice garde la main sur toutes les données
@@ -38,12 +38,12 @@ appels de présence, fiches de sortie allégées, planning, affiche de la semain
 
 ## Sécurité des données
 - **Sauvegarde** : Excel, PDF (impression), Word, fichier de restauration .json ; rappel après 30 jours.
-- **Corbeille** : personnes, activités, tâches et inscriptions supprimées restent 30 jours, restaurables (les fiches de sortie, santé, ne passent jamais par la corbeille).
+- **Corbeille** : personnes, activités, tâches et inscriptions supprimées restent 30 jours, restaurables (les fiches de sortie ne passent jamais par la corbeille).
 - **Journal** : qui a créé, modifié, supprimé ou restauré quoi, conservé 365 jours. Il est écrit par l'application : il aide à retrouver une erreur mais n'a pas valeur de preuve infalsifiable.
 - **Secours papier** : feuilles de présence imprimables par activité ou pour les 14 prochains jours.
 
 - **Annuaire** (admin) : collection `contacts` {nom, precision, categorie, tel, email, note}. Depuis la 1.4.1 le lien activité/tâche → contact se fait par identifiant (`interv`+`intervId`, `partenaire`+`partenaireId`, `benevole`+`benevoleId`, `responsable`+`responsableId` ; le champ texte garde le libellé « Nom · précision »). Composant `champListe/lireChamp` (js/annuaire.js) à réutiliser dans tout formulaire : liste déroulante + « Ajouter quelqu'un », ajout automatique sans doublon. Rubriques actuelles : activité (intervenant·e, partenaire, bénévole référent·e) et tâche (responsable) ; pour en ajouter une, déclarer une entrée dans `RUBRIQUES` et dans `annuaire.rubriques` (parametres.js). Accès réservé à l'administratrice (coordonnées).
-- **Paramètres** (admin) : noms de l'outil et du service, listes (catégories, budgets, mobilité), nom de la résidence et commune proposée à l'inscription, montant d'adhésion, durées (corbeille, journal, rappel), longueur minimale du mot de passe (12 par défaut), modules Tâches/Bilans activables. Stocké dans `parametres/general`, valeurs d'origine dans `js/parametres.js`.
+- **Paramètres** (admin) : noms de l'outil et du service, listes (catégories, budgets, déplacements), nom de la résidence et commune proposée à l'inscription, montant d'adhésion, durées (corbeille, journal, rappel), longueur minimale du mot de passe (12 par défaut), modules Tâches/Bilans activables. Stocké dans `parametres/general`, valeurs d'origine dans `js/parametres.js`.
 - **Mot de passe** : l'outil exige 12 caractères minimum à la connexion (bandeau + écran « Changer mon mot de passe »). Firebase n'impose que 6 caractères : seule l'application applique le minimum de 12. Double authentification : facultative, gratuite uniquement (application d'authentification), voir le guide.
 
 ## Limites connues
@@ -61,6 +61,8 @@ appels de présence, fiches de sortie allégées, planning, affiche de la semain
 ## Journal des versions
 | Version | Date | Changements |
 |---|---|---|
+| 1.15.1 | 23/11/2026 | **Clarté** : dans la fiche de sortie et dans Paramètres, les consignes sont séparées en deux lignes, « ✔ À écrire » (informations d'organisation : « vient avec Mme Durand », « arrive à 14 h 30 », « repartira avec sa fille ») et « ✘ À ne pas écrire » (toute information de santé). L'exemple « repas végétarien » est retiré (ambigu). Aucun changement de données ni de règles. |
+| 1.15.0 | 23/11/2026 | **Aucune donnée de santé dans AniMerci** (précision du service : le service socioculturel ne gère pas de soins ; le DPO a validé sur cette base). **Fiche de sortie** : suppression des champs Alimentation (allergie, régime) et Traitement ; nouveau champ libre « Autre information pratique » (140 caractères) avec avertissement et exemples ; « Déplacements » devient un choix d'organisation (Aucune difficulté, Besoin d'un accompagnement, Transport à organiser) ; avertissements aussi dans Paramètres, Personnes, Corbeille, Sauvegarde ; colonnes Mobilité, Alimentation, Traitement retirées des exports. Règles Firestore : commentaire seul modifié, rien à republier. Aucune fiche de sortie n'existait sur le site réel (confirmé le 23/11). |
 | 1.14.1 | 23/11/2026 | **Correctif** : sur ordinateur, le pied du menu (« Se déconnecter », « Mon mot de passe », version) sortait de l'écran quand la fenêtre était trop basse. Le bouton **Compte** est désormais toujours visible, en haut du menu sur grand écran, et le menu défile pour atteindre toutes les rubriques. **Nouveau** : bouton œil pour afficher ou masquer le mot de passe pendant la saisie (connexion et changement de mot de passe), sur tous les navigateurs. Aucun changement de données ni de règles Firestore. |
 | 1.14.0 | 23/11/2026 | **Lot K, petites améliorations** : bouton **Compte** sur téléphone (déconnexion, mot de passe, installation) ; logo dans le menu et sur l'écran d'ouverture ; fiche d'activité enrichie (description, public, coût, matériel, modalités d'inscription, autres bénévoles) ; événements et sorties : accompagnants, déroulé et **fiche du jour J** imprimable ; **confirmations d'inscription** (message prêt à copier, date « prévenue le ») ; **place libérée** : proposition à la première personne en attente ; retrait possible d'une demande en mode rotation ; **intervenant·e remplaçant·e** sur un appel ; tâches : statut (à faire, en cours, en attente), priorité et filtre par statut (une tâche répétée garde son responsable) ; **planning sur 1, 2 ou 3 mois** et **programme à imprimer** ; **alertes** sur l'accueil ; l'impression d'une fenêtre n'imprime plus l'écran en dessous. Règles Firestore inchangées (rien à republier). |
 | 1.13.0 | 19/11/2026 | **Nouveau nom : AniMerci** (remplace l'ancien nom de travail partout : textes, installation sur l'écran d'accueil, identifiants internes, tests, documents ; nouvelle icône (« A » dans une bulle de dialogue, fond corail-orange, étoiles) ; adresses d'hébergement `animerci-app`, sans suffixe) ; un contrôle automatique vérifie que l'ancien nom n'apparaît plus. |

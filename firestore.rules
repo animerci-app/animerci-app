@@ -51,7 +51,7 @@ service cloud.firestore {
       allow delete: if estAdmin();
     }
 
-    // Fiches de sortie (données de santé minimales) et tâches : admin uniquement
+    // Fiches de sortie (personne à prévenir, autorisations, informations pratiques ; aucune donnée de santé) et tâches : admin uniquement
     match /fiches/{id} { allow read, write: if estAdmin(); }
     match /taches/{id} { allow read, write: if estAdmin(); }
 

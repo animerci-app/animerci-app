@@ -64,8 +64,8 @@ export function donneesDemo() {
   const fiches = seniors.slice(0, 8).map((s, i) => ({
     id: 'a-bru_' + s.id, activiteId: 'a-bru', seniorId: s.id, seniorNom: `${s.prenom} ${s.nom}`,
     contact: i < 4 ? ['Fille : Sophie', 'Fils : Marc', 'Voisine : Annie', 'Époux : Roger'][i] : '',
-    tel: i < 4 ? `06 00 00 00 0${i + 1}` : '', mob: i === 5 ? 'Marche lente' : 'Autonome',
-    alim: i === 1 ? 'Sans porc' : '', med: i === 2, photo: i === 3 ? 'Non' : 'Oui', paye: i < 5, piece: i < 6, effacer: true
+    tel: i < 4 ? `06 00 00 00 0${i + 1}` : '', mob: i === 5 ? 'Besoin d\'un accompagnement' : 'Aucune difficulté',
+    info: i === 1 ? 'Vient avec une amie' : '', photo: i === 3 ? 'Non' : 'Oui', paye: i < 5, piece: i < 6, effacer: true
   }));
 
   const taches = [

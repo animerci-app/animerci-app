@@ -13,7 +13,7 @@ export const DEFAUTS = {
     categories: ['Créatif', 'Mémoire', 'Bien-être', 'Culture', 'Sortie', 'Événement', 'Activité physique', 'Repas'],
     budgets: ['Budget ville', 'Budget résidence', 'Forfait autonomie'],
     // Le PREMIER choix désigne « aucune difficulté » (non signalé sur les listes d'urgence)
-    mobilites: ['Autonome', 'Marche lente', 'Besoin d\'un bras', 'Fauteuil ou déambulateur']
+    mobilites: ['Aucune difficulté', 'Besoin d\'un accompagnement', 'Transport à organiser']
   },
   // Annuaire : catégories de personnes, et quelle liste alimente quelle rubrique (voir RUBRIQUES dans annuaire.js)
   annuaire: {
@@ -60,7 +60,7 @@ export function parametres() {
   <div class="card" style="margin-bottom:14px"><h2 style="margin-top:0">Listes de choix</h2>
     ${liste('p-cats', 'listes.categories', 'Catégories d\'activités', 'Une par ligne. Les activités déjà créées gardent leur catégorie.')}
     ${liste('p-bud', 'listes.budgets', 'Budgets', 'Une par ligne.')}
-    ${liste('p-mob', 'listes.mobilites', 'Déplacements (fiche de sortie)', 'Une par ligne. <b>Le premier choix</b> signifie « aucune difficulté ».')}</div>
+    ${liste('p-mob', 'listes.mobilites', 'Déplacements (fiche de sortie)', 'Une par ligne. <b>Le premier choix</b> signifie « aucune difficulté ». <b>✔ À mettre</b> : des choix d\'organisation (« transport à organiser », « besoin d\'un accompagnement »). <b>✘ À ne pas mettre</b> : toute information de santé (maladie, handicap, matériel médical…).')}</div>
   <div class="card" style="margin-bottom:14px"><h2 style="margin-top:0">Annuaire</h2>
     ${liste('p-ann', 'annuaire.categories', 'Catégories de l\'annuaire', 'Une par ligne (ex. Intervenant·e, Partenaire, Bénévole, Collègue, Fournisseur…). Les contacts déjà créés gardent leur catégorie ; renommer une catégorie ne les déplace pas.')}
     <p class="sub" style="margin:0 0 8px">Quelle liste alimente quelle rubrique ? (Enregistrez d'abord les catégories, puis choisissez.)</p><div class="two">

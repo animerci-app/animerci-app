@@ -269,17 +269,17 @@ function tabFiches(a) {
   const part = retenusDe(a.id);
   const get = i => S.cache.fiches.find(f => f.id === ficheId(a.id, i.seniorId)) || {};
   const ok = part.filter(i => { const f = get(i); return f.contact && f.tel; }).length;
-  return `<div class="card"><h2>Fiches de sortie</h2><p class="sub" style="margin:0 0 8px">Une fiche légère par participant·e : de quoi réagir en cas de besoin, rien de plus. Aucun diagnostic.</p>
+  return `<div class="card"><h2>Fiches de sortie</h2><p class="sub" style="margin:0 0 8px">Une fiche légère par participant·e : la personne à prévenir et les informations pratiques de la sortie, rien de plus. <b>Ne notez aucune donnée de santé.</b></p>
   <div class="stat-row"><span class="lab">Fiches complètes</span><div class="bar ${part.length && ok === part.length ? 'full' : ''}"><i style="width:${part.length ? ok / part.length * 100 : 0}%"></i></div><span class="v">${ok}/${part.length}</span></div>
   ${part.length ? part.map(i => { const f = get(i), done = f.contact && f.tel; return `<button class="cand" data-action="fiche-form" data-sid="${i.seniorId}">
     <span class="av">${esc(initiales(i.seniorNom))}</span><span style="flex:1"><b>${esc(i.seniorNom)}</b><span class="why">
-    ${f.mob && f.mob !== P('listes.mobilites')[0] ? `<span class="pill p-bleu">${esc(f.mob)}</span>` : ''}${f.alim ? `<span class="pill p-warn">Alimentation : ${esc(f.alim)}</span>` : ''}${f.med ? '<span class="pill p-rose">Traitement à prendre</span>' : ''}
+    ${f.mob && f.mob !== P('listes.mobilites')[0] ? `<span class="pill p-bleu">${esc(f.mob)}</span>` : ''}${f.info ? `<span class="pill p-warn">${esc(f.info)}</span>` : ''}
     ${f.photo === 'Non' ? '<span class="pill p-crit">Pas de photo</span>' : ''}${f.paye === false ? '<span class="pill p-warn">Règlement attendu</span>' : ''}${f.piece === false ? '<span class="pill p-warn">Pièce d\'identité à rappeler</span>' : ''}</span></span>
     <span class="pill ${done ? 'p-ok' : 'p-crit'}">${done ? 'Complète' : 'À compléter'}</span></button>`; }).join('') : '<div class="empty"><b>Aucun·e participant·e</b>Inscrivez des personnes d\'abord.</div>'}
   <div class="counter"><span style="flex:1;color:var(--gris)">Liste d'urgence : noms, personne à prévenir et téléphone.</span>
     <button class="btn blue" data-action="copier-urgence">Copier la liste d'urgence</button>
     <button class="btn ghost" data-action="effacer-fiches">Effacer les fiches après la sortie</button></div></div>
-  <p class="note">Les informations de santé restent limitées au strict utile (déplacements, alimentation, traitement oui ou non). Les fiches marquées « effacer après la sortie » sont supprimées d'un clic une fois la sortie terminée.</p>`;
+  <p class="note">AniMerci ne contient aucune donnée de santé : n'y notez ni allergie, ni maladie, ni médicament, ni handicap. Les fiches marquées « effacer après la sortie » sont supprimées d'un clic une fois la sortie terminée.</p>`;
 }
 function ficheForm(sid) {
   const a = actDe(S.actId), s = seniorDe(sid), ins = inscriptionsDe(a.id).find(i => i.seniorId === sid);
@@ -287,16 +287,16 @@ function ficheForm(sid) {
   modal(`<h2>Fiche de sortie</h2><p class="sub" style="margin:0"><b>${esc(ins ? ins.seniorNom : '')}</b> · ${esc(a.nom)}</p>
   <div class="field"><label for="f1">Personne à prévenir</label><input id="f1" value="${esc(f.contact || '')}" placeholder="Lien et prénom, ex. Fille : Sophie"></div>
   <div class="field"><label for="f2">Son téléphone</label><input id="f2" type="tel" value="${esc(f.tel || '')}"></div>
-  <div class="field"><label for="f3">Déplacements</label><select id="f3">${P('listes.mobilites').map(m => `<option ${m === f.mob ? 'selected' : ''}>${m}</option>`).join('')}</select></div>
-  <div class="field"><label for="f4">Alimentation (seulement ce qui compte pour le repas)</label><input id="f4" value="${esc(f.alim || '')}" placeholder="Allergie, régime… sinon laisser vide"></div>
-  <label class="chk" style="margin:8px 0"><input type="checkbox" id="f5" ${f.med ? 'checked' : ''}> Prend un traitement pendant la journée</label>
+  <div class="field"><label for="f3">Déplacements (organisation du transport)</label><select id="f3">${P('listes.mobilites').map(m => `<option ${m === f.mob ? 'selected' : ''}>${m}</option>`).join('')}</select></div>
+  <div class="field"><label for="f4">Autre information pratique (facultatif)</label><input id="f4" value="${esc(f.info || '')}" maxlength="140" placeholder="Ex. : vient avec Mme Durand">
+    <div class="note" style="margin:4px 0 0"><b>✔ À écrire</b> : une information d'organisation, par exemple « vient avec Mme Durand », « arrive à 14 h 30 », « repartira avec sa fille ».<br><b>✘ À ne pas écrire</b> : toute information de santé (allergie, maladie, médicament, handicap, régime médical…). Si une situation de santé compte pour la sortie, la personne la signale directement à l'équipe, en dehors de l'outil.</div></div>
   <div class="field"><label for="f6">Autorisation de photo (journal, site de la commune)</label><select id="f6"><option ${f.photo !== 'Non' ? 'selected' : ''}>Oui</option><option ${f.photo === 'Non' ? 'selected' : ''}>Non</option></select></div>
   <label class="chk" style="margin:8px 0"><input type="checkbox" id="f7" ${f.paye ? 'checked' : ''}> Règlement reçu</label>
   <label class="chk" style="margin:8px 0"><input type="checkbox" id="f8" ${f.piece ? 'checked' : ''}> Pièce d'identité rappelée (sortie en Belgique)</label>
   <label class="chk" style="margin:8px 0"><input type="checkbox" id="f9" ${f.effacer !== false ? 'checked' : ''}> Effacer cette fiche après la sortie</label>
   <div class="quick" style="margin-top:14px"><button class="btn" id="saveF">Enregistrer</button><button class="btn ghost" data-action="close">Annuler</button></div>`);
   $('#saveF').onclick = async () => {
-    await sauver('fiches', { id: ficheId(a.id, sid), activiteId: a.id, seniorId: sid, seniorNom: ins ? ins.seniorNom : '', contact: $('#f1').value.trim(), tel: $('#f2').value.trim(), mob: $('#f3').value, alim: $('#f4').value.trim(), med: $('#f5').checked, photo: $('#f6').value, paye: $('#f7').checked, piece: $('#f8').checked, effacer: $('#f9').checked }, 'Fiche enregistrée');
+    await sauver('fiches', { id: ficheId(a.id, sid), activiteId: a.id, seniorId: sid, seniorNom: ins ? ins.seniorNom : '', contact: $('#f1').value.trim(), tel: $('#f2').value.trim(), mob: $('#f3').value, info: $('#f4').value.trim(), photo: $('#f6').value, paye: $('#f7').checked, piece: $('#f8').checked, effacer: $('#f9').checked }, 'Fiche enregistrée');
     closeModal();
   };
 }
@@ -304,7 +304,7 @@ function listeUrgence() {
   const a = actDe(S.actId);
   const t = `Liste d'urgence · ${a.nom}${a.date ? ' · ' + L.fmtDate(a.date) : ''}\n` + retenusDe(a.id).map(i => {
     const f = S.cache.fiches.find(x => x.id === ficheId(a.id, i.seniorId)) || {};
-    return [i.seniorNom, f.contact || '?', f.tel || '?', f.mob && f.mob !== P('listes.mobilites')[0] ? f.mob : '', f.alim || '', f.med ? 'traitement' : '', f.photo === 'Non' ? 'PAS DE PHOTO' : ''].filter(Boolean).join(' | ');
+    return [i.seniorNom, f.contact || '?', f.tel || '?', f.mob && f.mob !== P('listes.mobilites')[0] ? f.mob : '', f.info || '', f.photo === 'Non' ? 'PAS DE PHOTO' : ''].filter(Boolean).join(' | ');
   }).join('\n');
   copier(t, 'Liste d\'urgence copiée');
 }

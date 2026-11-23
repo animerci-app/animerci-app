@@ -118,7 +118,7 @@ function seniorForm(id) {
   <div id="blocAdh"><div class="two"><div class="field"><label for="a1">Date d'adhésion</label><input id="a1" type="date" value="${esc(adh.date || '')}"></div>
   <div class="field"><label for="a2">Montant (€)</label><input id="a2" type="number" min="0" step="1" value="${esc(adh.montant != null ? adh.montant : P('adhesion.montantDefaut'))}"></div></div>
   <label class="chk" style="margin:6px 0"><input type="checkbox" id="a3" ${adh.paye ? 'checked' : ''}> Cotisation réglée</label></div>
-  <p class="sub">Ne notez ici aucune information de santé : elle n'est demandée que sur les fiches de sortie, et seulement ce qui est utile.</p>
+  <p class="sub">Ne notez ici aucune information de santé : AniMerci n'en contient pas (ni allergie, ni maladie, ni médicament, ni handicap).</p>
   <div class="quick" style="margin-top:14px"><button class="btn" id="saveSenior">Enregistrer</button><button class="btn ghost" data-action="close">Annuler</button>
   ${id ? '<button class="btn ghost" id="fusSenior">Fusionner avec un doublon…</button><button class="btn ghost" id="delSenior" style="margin-left:auto">Supprimer</button>' : ''}</div>`);
   if (id) $('#fusSenior').onclick = () => fusionForm(id);
