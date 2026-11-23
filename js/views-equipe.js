@@ -40,6 +40,7 @@ function formulaire(id) {
     <div id="blocAcces" class="field"><label>Accès provisoires <small class="sub">(cochez ce que la personne peut utiliser en plus)</small></label>
       <label class="chk" style="margin:4px 0"><input type="checkbox" id="ea-materiel" ${u.acces && u.acces.materiel ? 'checked' : ''}> Matériel (inventaire, réserves, emprunts)</label>
       <label class="chk" style="margin:4px 0"><input type="checkbox" id="ea-portage" ${u.acces && u.acces.portage ? 'checked' : ''}> Portage de repas (bénéficiaires, échanges avec le prestataire)</label>
+      <label class="chk" style="margin:4px 0"><input type="checkbox" id="ea-budgets" ${u.acces && u.acces.budgets ? 'checked' : ''}> Budgets et régie (dépenses, suivi de la régie)</label>
       <label class="chk" id="ea-inscr-l" style="margin:4px 0"><input type="checkbox" id="ea-inscriptions" ${u.acces && u.acces.inscriptions ? 'checked' : ''}> Saisie des inscriptions reçues sur papier ou par téléphone (liste restreinte : nom, prénom, statut, cotisation à régler)</label>
       <div class="field" style="max-width:240px;margin-top:8px"><label for="ea-fin">Jusqu'au <small class="sub">(facultatif)</small></label><input id="ea-fin" type="date" value="${esc(u.accesJusqu || '')}"></div>
       <p class="sub" style="margin:4px 0 0">Sans date, l'accès dure tant que la case est cochée. Avec une date, il s'arrête tout seul après ce jour. Vous pouvez décocher à tout moment. Une personne déjà connectée voit le changement à sa prochaine ouverture de l'application. Intervenant·es : la saisie des inscriptions n'est pas proposée (elles ne renseignent que la présence ou l'absence).</p></div>
@@ -58,7 +59,7 @@ function formulaire(id) {
     const avecAcces = role === 'intervenant' || role === 'benevole';
     const jusqu = avecAcces ? $('#ea-fin').value : '';
     if (jusqu && !/^\d{4}-\d{2}-\d{2}$/.test(jusqu)) return toast('La date de fin d\'accès est invalide.');
-    const acces = L.champsAcces(avecAcces ? { materiel: $('#ea-materiel').checked, portage: $('#ea-portage').checked, inscriptions: role === 'benevole' && $('#ea-inscriptions').checked } : {}, jusqu);
+    const acces = L.champsAcces(avecAcces ? { materiel: $('#ea-materiel').checked, portage: $('#ea-portage').checked, budgets: $('#ea-budgets').checked, inscriptions: role === 'benevole' && $('#ea-inscriptions').checked } : {}, jusqu);
     if (role === 'partenaire' && !partenaireId) return toast('Choisissez le partenaire concerné.');
     const cp = partenaireId ? S.cache.contacts.find(c => c.id === partenaireId) : null, partenaireNom = cp ? L.libelleContact(L.normContact(cp)) : '';
     const btn = $('#saveEq'); btn.disabled = true;

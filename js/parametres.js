@@ -37,6 +37,10 @@ export const DEFAUTS = {
     etatsDossier: ['Dossier à constituer', 'Dossier déposé', 'Dossier validé', 'Bourse versée'],
     objectifHeures: 50, montantBourse: 500, seuilRetardHeures: 10, alerteJours: 30
   },
+  // Budgets et dépenses (lot D) : les budgets eux-mêmes sont « listes.budgets » (déjà utilisés sur la fiche d'activité). Dispositifs de financement, seuil d'alerte « budget bientôt épuisé ».
+  budgets: { dispositifs: ['Aucun', 'Forfait autonomie', 'Subvention CCAS', 'Autre dispositif'], seuilAlertePourcent: 10 },
+  // Régie (lot D) : types d'opérations et modes de règlement réglables (aucune intégration technique de la future borne de paiement par carte : seulement un choix dans la liste).
+  regie: { types: ['Chèque à transmettre au Trésor public', 'Dépôt d\'espèces', 'Document à préparer', 'Suivi mensuel', 'Autre opération'], modes: ['Espèces', 'Chèque', 'Virement', 'Carte (borne)', 'Autre'], alerteJours: 15 },
   // Matériel (lot A) : listes de choix, unités, délai d'alerte de péremption. Les « états » (bon, usé, à réparer, manquant, hors d'usage) sont fixes : les alertes en dépendent.
   materiel: {
     categories: ['Vaisselle', 'Assiettes', 'Verres', 'Tasses', 'Bols', 'Couverts', 'Plateaux', 'Nappes', 'Décorations', 'Matériel créatif', 'Matériel de loisirs', 'Équipements'],
@@ -53,10 +57,10 @@ export const DEFAUTS = {
   verification: { mois: 12 },
   securite: { joursCorbeille: 30, joursJournal: 365, rappelSauvegardeJours: 30, motDePasseMin: 12, horizonEmargementJours: 14 },
   // Modules facultatifs (le planning, les activités et les personnes sont toujours actifs)
-  modules: { taches: true, bilans: true, portage: true, accueils: true }
+  modules: { taches: true, bilans: true, portage: true, accueils: true, budgets: true }
 };
 // Bornes acceptées pour les nombres (une valeur hors bornes est ignorée au profit de la valeur par défaut)
-const BORNES = { 'accueils.objectifHeures': [1, 1000], 'accueils.montantBourse': [0, 10000], 'accueils.seuilRetardHeures': [1, 200], 'accueils.alerteJours': [1, 365], 'adhesion.montantDefaut': [0, 1000], 'adhesion.relanceMois': [1, 12], 'verification.mois': [1, 36], 'securite.joursCorbeille': [1, 365], 'securite.joursJournal': [30, 1095], 'securite.rappelSauvegardeJours': [1, 365], 'securite.motDePasseMin': [8, 64], 'securite.horizonEmargementJours': [1, 90], 'partenaires.alerteJours': [1, 365], 'materiel.alertePeremptionJours': [1, 365] };
+const BORNES = { 'accueils.objectifHeures': [1, 1000], 'accueils.montantBourse': [0, 10000], 'accueils.seuilRetardHeures': [1, 200], 'accueils.alerteJours': [1, 365], 'adhesion.montantDefaut': [0, 1000], 'adhesion.relanceMois': [1, 12], 'verification.mois': [1, 36], 'securite.joursCorbeille': [1, 365], 'securite.joursJournal': [30, 1095], 'securite.rappelSauvegardeJours': [1, 365], 'securite.motDePasseMin': [8, 64], 'securite.horizonEmargementJours': [1, 90], 'partenaires.alerteJours': [1, 365], 'materiel.alertePeremptionJours': [1, 365], 'budgets.seuilAlertePourcent': [1, 100], 'regie.alerteJours': [1, 365] };
 
 const lire = (obj, chemin) => chemin.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
 export function P(chemin) {
@@ -107,6 +111,15 @@ export function parametres() {
     ${num('p-ash', 'accueils.seuilRetardHeures', 'Alerte « en retard » à partir de (heures d\'écart)', 'Écart entre les heures validées et les heures attendues à ce jour (au prorata de la période de mission).')}
     ${num('p-aaj', 'accueils.alerteJours', 'Alerte conventions et bilans avant l\'échéance (jours)')}</div>
     <p class="sub" style="margin:0">✔ <b>À écrire</b> : des éléments d'organisation (missions, horaires, lieux, rendez-vous de suivi). ✘ <b>À ne pas écrire</b> : toute information de santé ou de situation personnelle sensible.</p></div>
+  <div class="card" style="margin-bottom:14px"><h2 style="margin-top:0">Budgets et dépenses</h2>
+    <p class="sub" style="margin:0 0 8px">Les budgets eux-mêmes (ville, résidence, forfait autonomie…) se règlent dans « Listes de choix » ci-dessus (liste « Budgets »), car ils sont aussi proposés sur la fiche d'une activité. Le montant initial de chaque budget se règle directement dans l'écran Budgets.</p>
+    ${liste('p-bdi', 'budgets.dispositifs', 'Dispositifs de financement', 'Une par ligne (ex. forfait autonomie, subvention CCAS, aucun).')}
+    <div class="two">${num('p-bse', 'budgets.seuilAlertePourcent', 'Alerte « budget bientôt épuisé » (pourcentage restant)')}</div>
+    <p class="sub" style="margin:0">Ce suivi est interne : il ne remplace pas le logiciel comptable officiel ni les procédures de la collectivité (à faire valider par le service financier).</p></div>
+  <div class="card" style="margin-bottom:14px"><h2 style="margin-top:0">Régie</h2>
+    ${liste('p-rty', 'regie.types', 'Types d\'opérations de régie', 'Une par ligne (ex. chèque à transmettre au Trésor public, dépôt d\'espèces, document à préparer, suivi mensuel).')}
+    ${liste('p-rmo', 'regie.modes', 'Modes de règlement', 'Une par ligne. « Carte (borne) » est prévu pour la future borne de paiement : aucune intégration technique pour l\'instant.')}
+    <div class="two">${num('p-raj', 'regie.alerteJours', 'Alerte « échéance proche » (jours avant la date)')}</div></div>
   <div class="card" style="margin-bottom:14px"><h2 style="margin-top:0">Matériel et réserves</h2>
     ${liste('p-mca', 'materiel.categories', 'Catégories du matériel (inventaire)', 'Une par ligne. Les articles déjà créés gardent leur catégorie.')}
     ${liste('p-mcr', 'materiel.categoriesReserves', 'Catégories des réserves', 'Une par ligne (café, thé, boissons, fournitures…).')}
@@ -130,6 +143,7 @@ export function parametres() {
     <label class="chk" style="margin:4px 0"><input type="checkbox" id="p-m-bilans" ${moduleActif('bilans') ? 'checked' : ''}> Bilans et statistiques</label>
     <label class="chk" style="margin:4px 0"><input type="checkbox" id="p-m-portage" ${moduleActif('portage') ? 'checked' : ''}> Portage de repas (accessible à l'administratrice et à l'équipe)</label>
     <label class="chk" style="margin:4px 0"><input type="checkbox" id="p-m-accueils" ${moduleActif('accueils') ? 'checked' : ''}> Accueils : jeunes adultes (bourse), services civiques, stagiaires (administratrice seule)</label>
+    <label class="chk" style="margin:4px 0"><input type="checkbox" id="p-m-budgets" ${moduleActif('budgets') ? 'checked' : ''}> Budgets et régie (accessible à l'administratrice et à l'équipe si l'accès est coché)</label>
     <p class="sub" style="margin:6px 0 0">Un module désactivé disparaît du menu ; ses données restent conservées.</p></div>
   <div class="quick"><button class="btn" data-action="param-save">Enregistrer les paramètres</button><button class="btn ghost" data-action="param-reset">Revenir aux valeurs d'origine</button></div>`;
 }
@@ -139,7 +153,8 @@ export const actions = {
     if (!peutAdmin()) return;
     const cats = lignes('#p-cats'), bud = lignes('#p-bud'), mob = lignes('#p-mob'), ann = lignes('#p-ann'), psv = lignes('#p-psv'), pty = lignes('#p-pty');
     const aed = lignes('#p-aed'), mdr = lignes('#p-mdr'), mca = lignes('#p-mca'), mcr = lignes('#p-mcr'), mem = lignes('#p-mem'), msa = lignes('#p-msa'), mun = lignes('#p-mun'), pgm = lignes('#p-pgm');
-    if (!cats.length || !bud.length || !mob.length || !ann.length || !psv.length || !pty.length || !mca.length || !mcr.length || !mem.length || !msa.length || !mun.length || !mdr.length || !pgm.length || !aed.length) return toast('Chaque liste doit contenir au moins un choix.');
+    const bdi = lignes('#p-bdi'), rty = lignes('#p-rty'), rmo = lignes('#p-rmo');
+    if (!cats.length || !bud.length || !mob.length || !ann.length || !psv.length || !pty.length || !mca.length || !mcr.length || !mem.length || !msa.length || !mun.length || !mdr.length || !pgm.length || !aed.length || !bdi.length || !rty.length || !rmo.length) return toast('Chaque liste doit contenir au moins un choix.');
     await sauver('parametres', {
       id: 'general', nomOutil: $('#p-nom').value.trim() || DEFAUTS.nomOutil, nomService: $('#p-svc').value.trim() || DEFAUTS.nomService,
       affiche: { lieu: $('#p-aff-l').value.trim(), pied: $('#p-aff-p').value.trim() || DEFAUTS.affiche.pied },
@@ -152,8 +167,10 @@ export const actions = {
       portage: { prestataire: $('#p-pgp').value.trim(), motifs: pgm },
       accueils: { etatsDossier: aed, objectifHeures: val('#p-aoh', 'accueils.objectifHeures'), montantBourse: val('#p-amb', 'accueils.montantBourse'), seuilRetardHeures: val('#p-ash', 'accueils.seuilRetardHeures'), alerteJours: val('#p-aaj', 'accueils.alerteJours') },
       materiel: { categories: mca, categoriesReserves: mcr, emplacements: mem, saisons: msa, unites: mun, alertePeremptionJours: val('#p-mpe', 'materiel.alertePeremptionJours') },
+      budgets: { dispositifs: bdi, seuilAlertePourcent: val('#p-bse', 'budgets.seuilAlertePourcent') },
+      regie: { types: rty, modes: rmo, alerteJours: val('#p-raj', 'regie.alerteJours') },
       securite: { motDePasseMin: val('#p-pw', 'securite.motDePasseMin'), joursCorbeille: val('#p-corb', 'securite.joursCorbeille'), joursJournal: val('#p-jour', 'securite.joursJournal'), rappelSauvegardeJours: val('#p-rap', 'securite.rappelSauvegardeJours'), horizonEmargementJours: val('#p-hor', 'securite.horizonEmargementJours') },
-      modules: { taches: $('#p-m-taches').checked, bilans: $('#p-m-bilans').checked, portage: $('#p-m-portage').checked, accueils: $('#p-m-accueils').checked }
+      modules: { taches: $('#p-m-taches').checked, bilans: $('#p-m-bilans').checked, portage: $('#p-m-portage').checked, accueils: $('#p-m-accueils').checked, budgets: $('#p-m-budgets').checked }
     }, 'Paramètres enregistrés');
     render();
   },

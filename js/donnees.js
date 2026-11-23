@@ -36,15 +36,21 @@ export function besoins(c) {
     if (c.ongletPortage === 'echanges') { const an = c.anPortage || c.auj.slice(0, 4); add('portageEchanges', `an-${an}`, [['date', '>=', `${an}-01-01`], ['date', '<=', `${an}-12-31`]]); }
     if (c.role === 'admin') add('seniors', 'all');
   };
+  // Budgets et régie (lot D) : l'administratrice et l'équipe (si l'accès est coché) lisent les dépenses et opérations de l'année affichée (une par écran).
+  const budgets = () => {
+    if (c.budgetsActif === false || !peut('budgets')) return;
+    if (c.view === 'budgets') { const an = c.anBudgets || c.auj.slice(0, 4); add('depenses', `an-${an}`, [['date', '>=', `${an}-01-01`], ['date', '<=', `${an}-12-31`]]); }
+    if (c.view === 'regie') { const an = c.anRegie || c.auj.slice(0, 4); add('regie', `an-${an}`, [['date', '>=', `${an}-01-01`], ['date', '<=', `${an}-12-31`]]); }
+  };
   // Saisie des inscriptions reçues sur papier ou par téléphone (bénévoles cochés) : liste restreinte des personnes (seniorsLite) et inscriptions de l'activité choisie
   const inscrire = () => {
     if (c.view !== 'inscrire' || !peut('inscriptions') || c.role !== 'benevole') return;
     add('seniorsLite', 'all');
     if (c.inscrActId) add('inscriptions', c.inscrActId, ['activiteId', '==', c.inscrActId]);
   };
-  if (c.role === 'benevole') { add('activites', 'all'); materiel(); portage(); inscrire(); return B; }
+  if (c.role === 'benevole') { add('activites', 'all'); materiel(); portage(); budgets(); inscrire(); return B; }
   if (c.role === 'intervenant') {
-    add('activites', 'all'); materiel(); portage();
+    add('activites', 'all'); materiel(); portage(); budgets();
     for (const id of c.mesActivites || []) { add('inscriptions', id, ['activiteId', '==', id]); add('seances', id, ['activiteId', '==', id]); }
     return B;
   }
@@ -82,7 +88,7 @@ export function besoins(c) {
   if (v === 'equipe') { add('users', 'all'); add('contacts', 'all'); }
   // Accueils (lot E) : toutes les fiches (quelques dizaines) et l'Annuaire (bénévoles, pour les chiffres)
   if (v === 'accueils') { add('accueils', 'all'); add('contacts', 'all'); }
-  materiel(); portage();
+  materiel(); portage(); budgets();
   // Partenaires : l'annuaire, les conventions et les échanges de l'année affichée (+ ceux d'un partenaire si sa fiche est ouverte)
   if (v === 'partenaires') {
     const an = c.anPart || c.auj.slice(0, 4);

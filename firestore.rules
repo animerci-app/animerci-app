@@ -11,6 +11,7 @@ rules_version = '2';
 //  - accès provisoires (v1.20.0) : l'administratrice coche, par compte intervenant·e ou bénévole, Matériel, Portage de repas ou (bénévoles seulement) Saisie des inscriptions, avec une date de fin facultative (champs acces et accesFin du profil).
 //                   Sans case cochée, ces rôles gardent leurs droits d'origine (planning ; activités et appels pour les intervenant·es).
 //  - accueils (v1.20.0) : jeunes adultes (bourse), services civiques, stagiaires : administratrice uniquement
+//  - budgets et régie (v1.21.0, accès « budgets » à cocher) : l'administratrice, et les intervenant·es et bénévoles dont l'accès est coché, lisent et saisissent les dépenses et les opérations de régie ; seule l'administratrice supprime et règle le montant initial de chaque budget
 // Les comptes et leurs rôles (collection "users") sont créés dans la console Firebase.
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -126,6 +127,19 @@ service cloud.firestore {
     }
     match /portageEchanges/{id} {
       allow read, create, update: if equipePortage();
+      allow delete: if estAdmin();
+    }
+
+    // Budgets, dépenses et régie (lot D, v1.21.0). Suivi interne (ne remplace pas le logiciel comptable officiel) : aucune donnée de santé.
+    // L'équipe (admin, et intervenant·es/bénévoles dont l'accès « Budgets et régie » est coché) lit, crée et modifie ; chaque ligne garde « par ». Seule l'administratrice supprime.
+    // Le montant initial de chaque budget est un document de la collection « parametres » (id « budgets-<année> ») : lecture équipe, écriture admin seule (cf. règle /parametres ci-dessous).
+    function equipeBudgets() { return estAdmin() || acces('budgets'); }
+    match /depenses/{id} {
+      allow read, create, update: if equipeBudgets();
+      allow delete: if estAdmin();
+    }
+    match /regie/{id} {
+      allow read, create, update: if equipeBudgets();
       allow delete: if estAdmin();
     }
 

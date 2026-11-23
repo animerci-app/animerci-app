@@ -36,6 +36,7 @@
         if (op === 'update') return sienne(data.activiteId) && data.valide !== true && newData.valide !== true && newData.activiteId === data.activiteId;
         return false;
       case 'portage': case 'portageEchanges': return admin || acces(uid, 'portage') ? (op !== 'delete' || admin) : false;
+      case 'depenses': case 'regie': return admin || acces(uid, 'budgets') ? (op !== 'delete' || admin) : false;
       case 'materiel': case 'emprunts': return admin || acces(uid, 'materiel') ? (op !== 'delete' || admin) : false;
       case 'mouvements': return op === 'read' || op === 'create' ? admin || acces(uid, 'materiel') : op === 'update' ? false : admin;
       case 'parametres': return op === 'read' ? ['admin', 'intervenant', 'benevole', 'partenaire'].includes(r) : admin;
@@ -98,6 +99,7 @@
         else if (q.col === 'parametres') autorise = ['admin', 'intervenant', 'benevole', 'partenaire'].includes(r);
         else if (['materiel', 'emprunts', 'mouvements'].includes(q.col)) autorise = r === 'admin' || acces(uid, 'materiel');
         else if (['portage', 'portageEchanges'].includes(q.col)) autorise = r === 'admin' || acces(uid, 'portage');
+        else if (['depenses', 'regie'].includes(q.col)) autorise = r === 'admin' || acces(uid, 'budgets');
         else if (q.col === 'seniorsLite') autorise = r === 'admin' || accesInscr(uid);
         else if (q.col === 'echanges') autorise = r === 'admin' || (r === 'partenaire' && q.filtres.some(w => w.f === 'parUid' && w.op === '==' && w.v === uid));
         else if (q.col === 'inscriptions') autorise = r === 'admin' || accesInscr(uid) || (r === 'intervenant' && q.filtres.some(w => w.f === 'activiteId' && w.op === '==' && acts(uid).includes(w.v)));

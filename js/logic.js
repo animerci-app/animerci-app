@@ -363,7 +363,7 @@ export function programme(activites, du, au) {
   return { mois, regulieres };
 }
 // Alertes de l'accueil, calculées sur les données déjà chargées (aucune lecture en plus)
-export function alertesAccueil({ activites, inscriptions, seances, taches, auj, echanges = [], conventions = [], joursConv = 30, materiel = [], emprunts = [], joursPeremption = 30, fiches = null, portages = [], echangesPortage = [], accueils = [], benevoles = [], categorieBenevole = '', seuilHeures = 10 }) {
+export function alertesAccueil({ activites, inscriptions, seances, taches, auj, echanges = [], conventions = [], joursConv = 30, materiel = [], emprunts = [], joursPeremption = 30, fiches = null, portages = [], echangesPortage = [], accueils = [], benevoles = [], categorieBenevole = '', seuilHeures = 10, depenses = [], budgets = [], initiauxBudgets = {}, seuilPourcentBudget = 10, regie = [], joursAlerteRegie = 15 }) {
   const A = [], nomAct = id => (activites.find(a => a.id === id) || {}).nom;
   const ouvertes = taches.filter(t => !t.done);
   const retard = ouvertes.filter(t => t.echeance && t.echeance < auj).sort((x, y) => x.echeance.localeCompare(y.echeance));
@@ -379,6 +379,8 @@ export function alertesAccueil({ activites, inscriptions, seances, taches, auj, 
   if (fiches) A.push(...alertesFiches(fiches));
   A.push(...alertesPortage({ portages, echanges: echangesPortage, auj }));
   A.push(...alertesAccueils({ accueils, benevoles, categorieBenevole, auj, joursConv, seuilHeures }));
+  A.push(...alertesBudgets({ depenses, budgets, initiaux: initiauxBudgets, seuilPourcent: seuilPourcentBudget }));
+  A.push(...alertesRegie({ regie, auj, joursAlerte: joursAlerteRegie }));
   return A;
 }
 
@@ -976,7 +978,7 @@ export function alertesPortage({ portages = [], echanges = [], auj }) {
    Lot E (v1.20.0) : accès provisoires de l'équipe, vue restreinte des personnes, accueils (jeunes adultes, services civiques, stagiaires), bénévoles
    Tout est écrit pour l'ORGANISATION du service : aucune donnée de santé.
    ============================================================================================================ */
-export const MODULES_ACCES = { materiel: 'Matériel', portage: 'Portage de repas', inscriptions: 'Saisie des inscriptions' };
+export const MODULES_ACCES = { materiel: 'Matériel', portage: 'Portage de repas', budgets: 'Budgets et régie', inscriptions: 'Saisie des inscriptions' };
 /** « 2026-12-31 » → 20261231 (0 si la date est invalide). Sert à comparer sans fuseau et à écrire la règle Firestore. */
 export const dateEnNombre = iso => (/^\d{4}-\d{2}-\d{2}$/.test(iso || '') ? Number(iso.replace(/-/g, '')) : 0);
 /**
@@ -1133,4 +1135,98 @@ export function tableauxAccueils(accueils, an, benevoles = [], categorieBenevole
     { nom: 'Heures de mission', titre: `Heures de mission ${an}`, cols: ['Nom', 'Prénom', 'Date', 'Heures', 'Mission', 'Validée'],
       rows: lignes.flatMap(d => heuresDe(d).filter(h => h.date >= `${an}-01-01` && h.date <= `${an}-12-31`).map(h => [d.nom || '', d.prenom || '', fmtDate(h.date), n(num(h.heures)), h.mission || '', h.validee === false ? 'non' : 'oui'])) }
   ];
+}
+
+/* ---------- Lot D (v1.21.0) : budgets, dépenses, régie ---------- */
+// Suivi interne des dépenses par budget (ville, résidence, forfait autonomie…, liste réglable P('listes.budgets')) et de la régie
+// (documents à préparer, chèques à transmettre au Trésor public, échéances). Ne remplace pas le logiciel comptable officiel de la collectivité (cahier § 18).
+// Aucune pièce justificative n'est stockée (le stockage de fichiers est payant) : seul son emplacement est noté.
+export const STATUTS_REGIE = { a_transmettre: 'À transmettre', transmise: 'Transmise', rapprochée: 'Rapprochée', rapprochee: 'Rapprochée' };
+const LIB_STATUT_REGIE = { a_transmettre: 'À transmettre', transmise: 'Transmise', rapprochee: 'Rapprochée' };
+export const ORDRE_STATUTS_REGIE = ['a_transmettre', 'transmise', 'rapprochee'];
+export const fmtMontant = n => fmtQte(n) + ' €';
+
+/** Message d'erreur (ou '' si tout va bien) pour une dépense à enregistrer. */
+export function erreurDepense({ budget, date, fournisseur, nature, activiteId, libre, montantPrevu, montantEngage, montantPaye }, budgets = []) {
+  if (!budgets.includes(budget)) return 'Choisissez le budget concerné.';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) return 'Indiquez la date.';
+  if (!String(nature || '').trim()) return 'Indiquez la nature de la dépense.';
+  if (!activiteId && !String(libre || '').trim()) return 'Indiquez l\'activité ou l\'événement concerné (ou « Autre » avec un texte).';
+  for (const [lib, v] of [['prévisionnel', montantPrevu], ['engagé', montantEngage], ['payé', montantPaye]]) {
+    if (v !== '' && v != null && (!isFinite(Number(v)) || Number(v) < 0)) return `Le montant ${lib} doit être un nombre positif ou nul.`;
+  }
+  return '';
+}
+/** Message d'erreur pour une opération de régie. */
+export function erreurOperationRegie({ date, type, objet, montant }, types = []) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) return 'Indiquez la date.';
+  if (!types.includes(type)) return 'Choisissez le type d\'opération.';
+  if (!String(objet || '').trim()) return 'Donnez un objet à l\'opération.';
+  if (montant !== '' && montant != null && (!isFinite(Number(montant)) || Number(montant) < 0)) return 'Le montant doit être un nombre positif ou nul.';
+  return '';
+}
+/** Totaux (prévisionnel, engagé, payé, restant) d'un budget, à partir du montant initial réglé par l'administratrice. */
+export function totauxBudget(depenses, budget, initial = 0) {
+  const rows = (depenses || []).filter(d => d.budget === budget);
+  const prevu = rows.reduce((n, d) => n + num(d.montantPrevu), 0), engage = rows.reduce((n, d) => n + num(d.montantEngage), 0), paye = rows.reduce((n, d) => n + num(d.montantPaye), 0);
+  return { nb: rows.length, prevu, engage, paye, initial: num(initial), restant: num(initial) - paye };
+}
+/** Regroupement des dépenses par activité (ou événement) : total engagé et payé. */
+export function totauxParActivite(depenses) {
+  const m = new Map();
+  for (const d of depenses || []) {
+    const cle = d.activiteId || ('libre:' + (d.activiteLibre || d.libre || '(sans activité)')), nom = d.activiteNom || d.activiteLibre || d.libre || '(sans activité)';
+    const e = m.get(cle) || { nom, nb: 0, prevu: 0, engage: 0, paye: 0 };
+    e.nb++; e.prevu += num(d.montantPrevu); e.engage += num(d.montantEngage); e.paye += num(d.montantPaye); m.set(cle, e);
+  }
+  return [...m.values()].sort((a, b) => b.paye - a.paye || String(a.nom).localeCompare(String(b.nom), 'fr'));
+}
+/** Regroupement des dépenses par dispositif de financement (forfait autonomie…). */
+export function totauxParDispositif(depenses) {
+  const m = new Map();
+  for (const d of depenses || []) {
+    const cle = d.dispositif || '(aucun)';
+    const e = m.get(cle) || { nom: cle, nb: 0, paye: 0 };
+    e.nb++; e.paye += num(d.montantPaye); m.set(cle, e);
+  }
+  return [...m.values()].sort((a, b) => b.paye - a.paye);
+}
+/** Alertes « budgets » : budget dépassé (restant négatif), ou restant sous le seuil réglé (pourcentage de l'initial, si l'initial est renseigné). */
+export function alertesBudgets({ depenses = [], budgets = [], initiaux = {}, seuilPourcent = 10 } = {}) {
+  const A = [];
+  for (const b of budgets) {
+    const t = totauxBudget(depenses, b, initiaux[b] || 0);
+    if (t.initial > 0 && t.restant < 0) A.push({ niveau: 'crit', texte: `Budget dépassé : « ${b} » (restant ${fmtMontant(t.restant)})`, vue: 'budgets' });
+    else if (t.initial > 0 && t.restant <= t.initial * (seuilPourcent / 100)) A.push({ niveau: 'warn', texte: `Budget bientôt épuisé : « ${b} » (restant ${fmtMontant(t.restant)} sur ${fmtMontant(t.initial)})`, vue: 'budgets' });
+  }
+  return A;
+}
+/** Alertes « régie » : opérations non rapprochées dont l'échéance est dépassée ou proche, et opérations « à transmettre ». */
+export function alertesRegie({ regie = [], auj, joursAlerte = 15 } = {}) {
+  const A = [], ouvertes = regie.filter(o => o.statut !== 'rapprochee'), horizon = plusJ(auj, joursAlerte);
+  const depassees = ouvertes.filter(o => o.echeance && o.echeance < auj);
+  if (depassees.length) A.push({ niveau: 'crit', texte: `${depassees.length} opération${depassees.length > 1 ? 's' : ''} de régie en retard d'échéance`, vue: 'regie' });
+  const proches = ouvertes.filter(o => o.echeance && o.echeance >= auj && o.echeance <= horizon);
+  if (proches.length) A.push({ niveau: 'warn', texte: `${proches.length} opération${proches.length > 1 ? 's' : ''} de régie à échéance proche`, vue: 'regie' });
+  const aTransmettre = regie.filter(o => o.statut === 'a_transmettre');
+  if (aTransmettre.length) A.push({ niveau: 'info', texte: `${aTransmettre.length} opération${aTransmettre.length > 1 ? 's' : ''} de régie à transmettre`, vue: 'regie' });
+  return A;
+}
+/** Tableaux d'export (Excel, PDF) pour les budgets et dépenses d'une année. */
+export function tableauxBudgets(depenses, an, budgets = [], initiaux = {}, auj = '') {
+  const lignes = (depenses || []).filter(d => (d.date || '').slice(0, 4) === String(an)).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  const rowsBudgets = budgets.map(b => { const t = totauxBudget(depenses, b, initiaux[b] || 0); return [b, fmtMontant(t.initial), fmtMontant(t.prevu), fmtMontant(t.engage), fmtMontant(t.paye), fmtMontant(t.restant)]; });
+  const rowsActivites = totauxParActivite(depenses.filter(d => (d.date || '').slice(0, 4) === String(an))).map(a => [a.nom, a.nb, fmtMontant(a.prevu), fmtMontant(a.engage), fmtMontant(a.paye)]);
+  return [
+    { nom: `Budgets ${an}`, titre: `Suivi des budgets au ${fmtDate(auj || an + '-12-31')}`, cols: ['Budget', 'Initial', 'Prévisionnel', 'Engagé', 'Payé', 'Restant'], rows: rowsBudgets },
+    { nom: 'Dépenses par activité', titre: `Dépenses par activité ou événement ${an}`, cols: ['Activité ou événement', 'Nb de dépenses', 'Prévisionnel', 'Engagé', 'Payé'], rows: rowsActivites },
+    { nom: 'Dépenses', titre: `Dépenses de l'année ${an}`, cols: ['Date', 'Budget', 'Fournisseur', 'Nature', 'Activité ou événement', 'Dispositif', 'Prévisionnel', 'Engagé', 'Payé', 'Justificatif', 'Saisi par'],
+      rows: lignes.map(d => [fmtDate(d.date), d.budget || '', d.fournisseur || '', d.nature || '', d.activiteNom || d.activiteLibre || d.libre || '', d.dispositif || '', fmtMontant(num(d.montantPrevu)), fmtMontant(num(d.montantEngage)), fmtMontant(num(d.montantPaye)), d.justificatifOu || '', d.par || '']) }
+  ];
+}
+/** Tableau d'export pour les opérations de régie d'une année. */
+export function tableauxRegie(regie, an) {
+  const lignes = (regie || []).filter(o => (o.date || '').slice(0, 4) === String(an)).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  return [{ nom: `Régie ${an}`, titre: `Opérations de régie de l'année ${an}`, cols: ['Date', 'Type', 'Objet', 'Montant', 'Mode de règlement', 'Statut', 'Échéance', 'Saisi par'],
+    rows: lignes.map(o => [fmtDate(o.date), o.type || '', o.objet || '', o.montant === '' || o.montant == null ? '' : fmtMontant(num(o.montant)), o.mode || '', LIB_STATUT_REGIE[o.statut] || o.statut || '', fmtDate(o.echeance), o.par || '']) }];
 }

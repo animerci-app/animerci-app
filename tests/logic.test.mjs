@@ -670,7 +670,7 @@ t('lot E : accès provisoires (cases, date de fin, intervenants sans saisie des 
   assert.equal(L.accesActif({ role: 'admin' }, 'portage', '2026-11-23'), true);
   assert.equal(L.accesActif({ role: 'partenaire', acces: { materiel: true } }, 'materiel', '2026-11-23'), false);
   assert.equal(L.accesActif(null, 'materiel', '2026-11-23'), false);
-  assert.deepEqual(L.champsAcces({ materiel: true }, '2026-12-31'), { acces: { materiel: true, portage: false, inscriptions: false }, accesJusqu: '2026-12-31', accesFin: 20261231 });
+  assert.deepEqual(L.champsAcces({ materiel: true }, '2026-12-31'), { acces: { materiel: true, portage: false, budgets: false, inscriptions: false }, accesJusqu: '2026-12-31', accesFin: 20261231 });
   assert.equal(L.champsAcces({}, 'n\'importe quoi').accesFin, 0);
   assert.deepEqual(L.resumeAcces(b, '2026-11-23'), ['Accès : Matériel, Saisie des inscriptions (jusqu\'au 31/12/2026)']);
 });
@@ -728,4 +728,88 @@ t('lot E : les données de démonstration sont cohérentes', () => {
   const d = donneesDemo(); assert.equal(d.accueils.length, 3); assert.equal(d.seniorsLite.length, d.seniors.length);
   for (const a of d.accueils) assert.equal(L.erreurAccueil(a), '', a.id);
   assert.ok(d.seniorsLite.every(l => !('naissance' in l) && !('tel' in l) && !('adresse' in l)));
+});
+t('lot D : budgets, dépenses, régie — validation, totaux, alertes, tableaux', () => {
+  const budgets = ['Budget ville', 'Budget résidence', 'Forfait autonomie'];
+  const d1 = { budget: 'Budget ville', date: '2026-03-01', fournisseur: 'Fleuriste', nature: 'Fournitures', activiteId: 'a1', libre: '', montantPrevu: 100, montantEngage: 100, montantPaye: 90 };
+  assert.equal(L.erreurDepense(d1, budgets), '');
+  assert.ok(L.erreurDepense({ ...d1, budget: 'Inconnu' }, budgets));
+  assert.ok(L.erreurDepense({ ...d1, date: '' }, budgets));
+  assert.ok(L.erreurDepense({ ...d1, nature: '' }, budgets));
+  assert.ok(L.erreurDepense({ ...d1, activiteId: '', libre: '' }, budgets), 'ni activité ni texte libre');
+  assert.equal(L.erreurDepense({ ...d1, activiteId: '', libre: 'Marché de Noël' }, budgets), '', 'texte libre accepté');
+  assert.ok(L.erreurDepense({ ...d1, montantPaye: -5 }, budgets));
+  const types = ['Chèque à transmettre au Trésor public', 'Document à préparer'];
+  assert.equal(L.erreurOperationRegie({ date: '2026-03-01', type: types[0], objet: 'Chèque du banquet', montant: 50 }, types), '');
+  assert.ok(L.erreurOperationRegie({ date: '', type: types[0], objet: 'x' }, types));
+  assert.ok(L.erreurOperationRegie({ date: '2026-03-01', type: 'Inconnu', objet: 'x' }, types));
+  assert.ok(L.erreurOperationRegie({ date: '2026-03-01', type: types[0], objet: '' }, types));
+
+  const depenses = [
+    { id: 'd1', budget: 'Budget ville', date: '2026-03-01', activiteId: 'a1', activiteNom: 'Atelier', dispositif: 'Aucun', montantPrevu: 100, montantEngage: 100, montantPaye: 90 },
+    { id: 'd2', budget: 'Budget ville', date: '2026-04-01', activiteId: 'a1', activiteNom: 'Atelier', dispositif: 'Forfait autonomie', montantPrevu: 50, montantEngage: 50, montantPaye: 50 },
+    { id: 'd3', budget: 'Budget résidence', date: '2026-05-01', activiteId: '', libre: 'Marché de Noël', dispositif: 'Aucun', montantPrevu: 300, montantEngage: 300, montantPaye: 300 }
+  ];
+  const tv = L.totauxBudget(depenses, 'Budget ville', 200);
+  assert.equal(tv.nb, 2); assert.equal(tv.paye, 140); assert.equal(tv.restant, 60);
+  const tr = L.totauxBudget(depenses, 'Budget résidence', 0);
+  assert.equal(tr.paye, 300); assert.equal(tr.initial, 0);
+  const parAct = L.totauxParActivite(depenses);
+  assert.equal(parAct.find(a => a.nom === 'Atelier').paye, 140);
+  assert.equal(parAct.find(a => a.nom === 'Marché de Noël').paye, 300);
+  const parDisp = L.totauxParDispositif(depenses);
+  assert.equal(parDisp.find(x => x.nom === 'Forfait autonomie').paye, 50);
+
+  const alB1 = L.alertesBudgets({ depenses, budgets: ['Budget ville'], initiaux: { 'Budget ville': 100 }, seuilPourcent: 10 });
+  assert.ok(alB1.some(a => a.niveau === 'crit' && /dépassé/.test(a.texte)), 'budget dépassé');
+  const alB2 = L.alertesBudgets({ depenses, budgets: ['Budget ville'], initiaux: { 'Budget ville': 145 }, seuilPourcent: 10 });
+  assert.ok(alB2.some(a => a.niveau === 'warn' && /bientôt épuisé/.test(a.texte)), 'budget bientôt épuisé');
+  const alB3 = L.alertesBudgets({ depenses, budgets: ['Budget ville'], initiaux: { 'Budget ville': 1000 }, seuilPourcent: 10 });
+  assert.equal(alB3.length, 0, 'budget large : aucune alerte');
+
+  const regie = [
+    { id: 'r1', date: '2026-03-01', type: 'Chèque à transmettre au Trésor public', objet: 'Chèque A', statut: 'a_transmettre', echeance: '2026-03-05' },
+    { id: 'r2', date: '2026-03-01', type: 'Document à préparer', objet: 'Bilan', statut: 'transmise', echeance: '2026-03-20' },
+    { id: 'r3', date: '2026-02-01', type: 'Suivi mensuel', objet: 'Caisse', statut: 'rapprochee', echeance: '' }
+  ];
+  const alR = L.alertesRegie({ regie, auj: '2026-03-10', joursAlerte: 15 });
+  assert.ok(alR.some(a => a.niveau === 'crit' && /retard/.test(a.texte)), 'échéance dépassée (chèque A)');
+  assert.ok(alR.some(a => a.niveau === 'warn' && /proche/.test(a.texte)), 'échéance proche (bilan)');
+  assert.ok(alR.some(a => a.niveau === 'info' && /à transmettre/.test(a.texte)));
+  assert.equal(L.alertesRegie({ regie: [regie[2]], auj: '2026-03-10', joursAlerte: 15 }).length, 0, 'opération rapprochée : aucune alerte');
+
+  const TB = L.tableauxBudgets(depenses, 2026, budgets, { 'Budget ville': 200 }, '2026-12-31');
+  assert.equal(TB.length, 3);
+  assert.equal(TB[0].rows.find(r => r[0] === 'Budget ville')[5], '60 €');
+  assert.equal(TB[2].rows.length, 3);
+  assert.ok(!JSON.stringify(TB).toLowerCase().includes('santé'));
+  const TR = L.tableauxRegie(regie, 2026);
+  assert.equal(TR[0].rows.length, 3);
+  assert.ok(!JSON.stringify(TR).toLowerCase().includes('santé'));
+
+  // Accès provisoire « budgets », partagé par les écrans Budgets et Régie
+  const u = L.champsAcces({ budgets: true }, '');
+  assert.equal(L.accesActif({ role: 'intervenant', acces: u.acces }, 'budgets', '2026-11-23'), true);
+  assert.equal(L.accesActif({ role: 'benevole', acces: {} }, 'budgets', '2026-11-23'), false);
+  assert.equal(L.accesActif({ role: 'admin' }, 'budgets', '2026-11-23'), true);
+});
+t('lot D : chargement à la demande (budgets et régie)', () => {
+  const role = 'admin', budgetsActif = true, acces = {};
+  assert.ok(!cols({ role, view: 'budgets', budgetsActif, acces, anBudgets: 2026 }).includes('regie'), 'écran Budgets : pas de lecture de régie');
+  assert.ok(cols({ role, view: 'budgets', budgetsActif, acces, anBudgets: 2026 }).includes('depenses:an-2026'));
+  assert.ok(cols({ role, view: 'regie', budgetsActif, acces, anRegie: 2026 }).includes('regie:an-2026'));
+  assert.ok(!cols({ role, view: 'regie', budgetsActif, acces, anRegie: 2026 }).includes('depenses'));
+  assert.equal(besoins({ ...base, role, view: 'budgets', budgetsActif: false, acces, anBudgets: 2026 }).filter(b => b.col === 'depenses').length, 0, 'module désactivé : rien ne se charge');
+  const equ = { role: 'intervenant', view: 'budgets', budgetsActif: true, mesActivites: [], acces: { budgets: true }, anBudgets: 2026 };
+  assert.ok(cols(equ).includes('depenses:an-2026'), 'intervenant·e avec accès : chargé');
+  assert.equal(besoins({ ...base, ...equ, acces: {} }).filter(b => b.col === 'depenses').length, 0, 'sans accès : rien ne se charge');
+});
+t('lot D : les données de démonstration sont cohérentes', () => {
+  const d = donneesDemo();
+  assert.equal(d.depenses.length, 3); assert.equal(d.regie.length, 3);
+  const an = new Date().getFullYear();
+  const initDoc = d.parametres.find(p => p.id === `budgets-${an}`);
+  assert.ok(initDoc && initDoc.initiaux['Budget ville'] > 0);
+  for (const dep of d.depenses) assert.equal(L.erreurDepense(dep, L.DEFAUTS_LISTES_BUDGETS || ['Budget ville', 'Budget résidence', 'Forfait autonomie']), '', dep.id);
+  for (const op of d.regie) assert.equal(L.erreurOperationRegie(op, ['Chèque à transmettre au Trésor public', 'Dépôt d\'espèces', 'Document à préparer', 'Suivi mensuel', 'Autre opération']), '', op.id);
 });

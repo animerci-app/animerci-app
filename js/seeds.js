@@ -131,7 +131,19 @@ export function donneesDemo() {
     { id: 'pe-1', type: 'commande', date: plusJours(-9), prestataire: 'Traiteur (démonstration)', objet: 'Repas supplémentaires pour le banquet', resume: 'Dix repas de plus le jour du banquet.', suite: 'Confirmer le nombre définitif', suiteDate: plusJours(3), suiteFaite: false, suiteAFaire: true, statut: 'ouvert', par },
     { id: 'pe-2', type: 'livraison', date: plusJours(-40), prestataire: 'Traiteur (démonstration)', objet: 'Livraison en retard le jeudi', resume: 'Retard d\'une heure, excuses reçues.', suite: '', suiteDate: '', suiteFaite: false, suiteAFaire: false, statut: 'clos', par }
   ];
-  const parametres = [{ id: 'portage', initialise: le }];
+  const an = new Date().getFullYear();
+  const parametres = [{ id: 'portage', initialise: le }, { id: `budgets-${an}`, initiaux: { 'Budget ville': 3000, 'Budget résidence': 2000, 'Forfait autonomie': 1200 } }];
+  // Budgets et dépenses (lot D) : exemples fictifs
+  const depenses = [
+    { id: 'd-1', budget: 'Budget ville', date: plusJours(-12), fournisseur: 'Fleuriste (démonstration)', nature: 'Fournitures pour l\'atelier floral', activiteId: 'a-flo', activiteNom: 'Atelier floral de Noël', libre: '', dispositif: 'Aucun', montantPrevu: 150, montantEngage: 150, montantPaye: 140, justificatifOu: 'Classeur « Factures » du bureau', commentaire: 'Facture n° 4521.', par },
+    { id: 'd-2', budget: 'Budget résidence', date: plusJours(-5), fournisseur: 'Papeterie (démonstration)', nature: 'Fournitures pour l\'atelier mémoire', activiteId: 'a-mem', activiteNom: 'Atelier mémoire', libre: '', dispositif: 'Aucun', montantPrevu: 60, montantEngage: 55, montantPaye: '', justificatifOu: '', commentaire: '', par },
+    { id: 'd-3', budget: 'Budget ville', date: plusJours(-30), fournisseur: 'Traiteur (démonstration)', nature: 'Marché de Noël : boissons et goûter', activiteId: '', activiteNom: '', libre: 'Marché de Noël', dispositif: 'Forfait autonomie', montantPrevu: 300, montantEngage: 300, montantPaye: 300, justificatifOu: 'Devis signé, dossier Marché de Noël', commentaire: 'Devis signé le 3 novembre.', par }
+  ];
+  const regie = [
+    { id: 'r-1', type: 'Chèque à transmettre au Trésor public', date: plusJours(-8), objet: 'Chèque du marché de Noël', montant: 300, mode: 'Chèque', statut: 'a_transmettre', echeance: plusJours(5), commentaire: '', par },
+    { id: 'r-2', type: 'Document à préparer', date: plusJours(-15), objet: 'Bilan financier trimestriel', montant: '', mode: '', statut: 'transmise', echeance: plusJours(-2), commentaire: 'En attente de signature.', par },
+    { id: 'r-3', type: 'Suivi mensuel', date: plusJours(-45), objet: 'Suivi de caisse de novembre', montant: 85, mode: 'Espèces', statut: 'rapprochee', echeance: '', commentaire: '', par }
+  ];
   // Accueils (lot E) : personnes fictives
   const accueils = [
     { id: 'ac-1', type: 'bourse', nom: 'Fictif', prenom: 'Léa', debut: plusJours(-60), fin: plusJours(120), objectifHeures: 50, montant: 500, clos: false, convention: { etat: 'signee', echeance: plusJours(120), ou: 'Classeur du bureau' }, missions: 'Aide à l\'animation des après-midi jeux', etatDossier: 'En cours',
@@ -140,5 +152,5 @@ export function donneesDemo() {
     { id: 'ac-3', type: 'stagiaire', nom: 'Modèle', prenom: 'Inès', debut: plusJours(-10), fin: plusJours(40), clos: false, etablissement: 'Lycée (démonstration)', referent: 'Tuteur de l\'établissement', convention: { etat: 'signee', echeance: plusJours(40), ou: 'Dossier stagiaires' }, missions: 'Découverte du service', bilan: '', rdv: [], heures: [] }
   ];
   const seniorsLite = seniors.map(copieSeniorLite);
-  return { seniors, activites, inscriptions, seances, fiches, taches, contacts, echanges, conventions, materiel, emprunts, mouvements, portage, portageEchanges, parametres, accueils, seniorsLite };
+  return { seniors, activites, inscriptions, seances, fiches, taches, contacts, echanges, conventions, materiel, emprunts, mouvements, portage, portageEchanges, parametres, accueils, seniorsLite, depenses, regie };
 }
