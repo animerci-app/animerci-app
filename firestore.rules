@@ -7,6 +7,7 @@ rules_version = '2';
 //  - benevole     : lit uniquement les activités (planning)
 //  - partenaire   : (accès ouvert par l'administratrice, p. ex. pour un essai) lit et saisit SES propres échanges, rien d'autre
 //  - matériel (v1.17.0) : l'administratrice, les intervenant·es et les bénévoles lisent et saisissent le matériel, les emprunts et les mouvements de stock ; seule l'administratrice supprime
+//  - portage (v1.19.0) : l'administratrice, les intervenant·es et les bénévoles lisent et saisissent le suivi des bénéficiaires du portage de repas et les échanges avec le prestataire ; seule l'administratrice supprime
 // Les comptes et leurs rôles (collection "users") sont créés dans la console Firebase.
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -90,6 +91,19 @@ service cloud.firestore {
     match /mouvements/{id} {
       allow read, create: if equipeMateriel();
       allow update: if false;
+      allow delete: if estAdmin();
+    }
+
+    // Portage de repas (v1.19.0). Aucune donnée de santé : motifs d'organisation seulement.
+    // Le document « portage » d'un bénéficiaire recopie le strict nécessaire de sa fiche (nom, sexe, année de naissance, jours de livraison) et son historique (début, interruptions, reprises, arrêt) :
+    // l'équipe lit, crée et modifie (chaque événement garde « saisi par »), seule l'administratrice supprime. Le partenaire n'y a pas accès.
+    function equipePortage() { return role() in ['admin', 'intervenant', 'benevole']; }
+    match /portage/{id} {
+      allow read, create, update: if equipePortage();
+      allow delete: if estAdmin();
+    }
+    match /portageEchanges/{id} {
+      allow read, create, update: if equipePortage();
       allow delete: if estAdmin();
     }
 

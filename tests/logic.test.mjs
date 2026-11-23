@@ -532,3 +532,128 @@ console.log('ok - identifiants des fiches de démonstration');
   assert.equal(L.cotisationARegler({ statut: 'adherent', adhesion: { date: `${new Date().getFullYear()}-01-02`, paye: false } }), true);
   console.log('ok - lot F : adhésions par année, renouvellement, proches, téléphones, vérification, alertes, exports');
 }
+
+/* ---------- Lot B (1.19.0) : portage de repas ---------- */
+t('lot B : états, interruptions, reprises, arrêts, validation', () => {
+  const par = 'Test', le = '2026-01-01T10:00:00Z', motifs = ['Absence temporaire (vacances ou autre)', 'Autre motif d\'organisation'];
+  const base = { id: 'p1', nom: 'Dupont', prenom: 'Anne', sexe: 'F', anneeNaissance: 1940, jours: [0, 2, 4], historique: [] };
+  let d = L.avecEvenementPortage(base, { type: 'debut', date: '2025-12-31', avant: true, par, le });
+  assert.equal(d.etat, 'encours'); assert.equal(d.debutLe, '2025-12-31'); assert.equal(L.libelleDebutPortage(d), 'avant 2026');
+  // seul un portage en cours s'interrompt ; motif obligatoire et dans la liste ; reprise prévue pas avant le début
+  assert.match(L.erreurEvenementPortage(d, { type: 'reprise', date: '2026-02-01' }, motifs), /interrompu/);
+  assert.match(L.erreurEvenementPortage(d, { type: 'interruption', date: '2026-02-01' }, motifs), /motif/i);
+  assert.match(L.erreurEvenementPortage(d, { type: 'interruption', date: '2026-02-01', motif: 'Hospitalisation' }, motifs), /liste/);
+  assert.match(L.erreurEvenementPortage(d, { type: 'interruption', date: '2026-02-10', reprise: '2026-02-01', motif: motifs[0] }, motifs), /reprise prévue/i);
+  assert.match(L.erreurEvenementPortage(d, { type: 'interruption', date: '2026-02-xx', motif: motifs[0] }, motifs), /date/i);
+  assert.equal(L.erreurEvenementPortage(d, { type: 'interruption', date: '2026-02-01', reprise: '2026-02-15', motif: motifs[0] }, motifs), '');
+  d = L.avecEvenementPortage(d, { type: 'interruption', date: '2026-02-01', reprise: '2026-02-15', motif: motifs[0], precision: 'vacances', par, le });
+  assert.equal(d.etat, 'interrompu'); assert.equal(d.reprisePrevue, '2026-02-15'); assert.equal(d.finLe, '');
+  assert.match(L.erreurEvenementPortage(d, { type: 'interruption', date: '2026-02-05', motif: motifs[0] }, motifs), /en cours/);
+  assert.match(L.erreurEvenementPortage(d, { type: 'reprise', date: '2026-01-15' }, motifs), /précéder/);
+  d = L.avecEvenementPortage(d, { type: 'reprise', date: '2026-02-16', par, le });
+  assert.equal(d.etat, 'encours'); assert.equal(d.reprisePrevue, '');
+  d = L.avecEvenementPortage(d, { type: 'arret', date: '2026-06-30', motif: motifs[1], par, le });
+  assert.equal(d.etat, 'arrete'); assert.equal(d.finLe, '2026-06-30');
+  assert.match(L.erreurEvenementPortage(d, { type: 'arret', date: '2026-07-01', motif: motifs[1] }, motifs), /déjà arrêté/);
+  assert.match(L.erreurEvenementPortage(d, { type: 'interruption', date: '2026-07-01', motif: motifs[0] }, motifs), /en cours/);
+  assert.equal(L.erreurEvenementPortage(d, { type: 'debut', date: '2026-09-01' }, motifs), '');
+  assert.match(L.erreurEvenementPortage({ ...base, historique: [] }, { type: 'debut', date: '2026-01-01' }, motifs), '' || /^$/, 'un document vide peut commencer');
+  // états à une date
+  assert.equal(L.etatPortageAu(d, '2025-12-30'), 'avant'); assert.equal(L.etatPortageAu(d, '2026-01-15'), 'encours'); assert.equal(L.etatPortageAu(d, '2026-02-05'), 'interrompu');
+  assert.equal(L.etatPortageAu(d, '2026-03-01'), 'encours'); assert.equal(L.etatPortageAu(d, '2026-06-30'), 'arrete'); assert.equal(L.etatPortageAu(d, '2030-01-01'), 'arrete');
+  // l'ordre de saisie ne compte pas, la date oui
+  const melange = { ...d, historique: [...d.historique].reverse() }; assert.equal(L.champsPortage(melange).etat, 'arrete');
+  // l'historique de départ n'est pas modifié par un ajout
+  assert.equal(base.historique.length, 0);
+  // recommencer après un arrêt : nouveau début
+  const r = L.avecEvenementPortage(d, { type: 'debut', date: '2026-09-01', par, le }); assert.equal(r.etat, 'encours'); assert.equal(r.finLe, '');
+});
+t('lot B : correction de la date de début', () => {
+  let d = L.avecEvenementPortage({ id: 'p', historique: [] }, { type: 'debut', date: '2026-03-01', par: 'a', le: 'x' });
+  d = L.avecEvenementPortage(d, { type: 'interruption', date: '2026-04-01', motif: 'm', par: 'a', le: 'x' });
+  assert.match(L.erreurDebutPortage(d, { date: '2026-05-01' }), /suivre/); assert.equal(L.erreurDebutPortage(d, { date: '2026-02-01' }), ''); assert.match(L.erreurDebutPortage(d, { date: '' }), /date/i);
+  const c = L.avecDebutPortage(d, { date: '2026-02-01', par: 'Moi', le: 'y' }); assert.equal(c.debutLe, '2026-02-01'); assert.equal(c.historique.length, 2); assert.equal(c.etat, 'interrompu');
+  const av = L.avecDebutPortage(d, { avant: true }); assert.equal(L.libelleDebutPortage(av), 'avant 2026'); assert.equal(av.debutLe, '2025-12-31');
+  assert.equal(L.libelleDebutPortage(L.avecDebutPortage(av, { date: '2026-01-10' })), '10/01/2026');
+});
+t('lot B : synchronisation avec les fiches (création, copie, arrêt/reprise par la case)', () => {
+  const s1 = { id: 's1', nom: 'Dupont', prenom: 'Anne', sexe: 'F', naissance: '1940-05-02', portage: { jours: [4, 0, 0], precision: '' } }, s2 = { id: 's2', nom: 'Martin', prenom: 'Luc', sexe: 'H', naissance: '1951-01-01', portage: null };
+  const ctx = { auj: '2026-11-23', par: 'P', le: 'L' };
+  // première initialisation : « avant 2026 », seule la personne qui reçoit le portage est créée, et on ne recopie ni date de naissance complète ni coordonnées
+  let plan = L.planSynchroPortage([s1, s2], [], { ...ctx, premiere: true }); assert.equal(plan.length, 1); const d = plan[0];
+  assert.equal(d.id, 's1'); assert.deepEqual(d.jours, [0, 4]); assert.equal(d.anneeNaissance, 1940); assert.equal(L.libelleDebutPortage(d), 'avant 2026'); assert.equal(d.naissance, undefined); assert.equal(d.tel, undefined);
+  // plus tard : un nouveau bénéficiaire commence aujourd'hui
+  plan = L.planSynchroPortage([s1, { ...s2, portage: { jours: [1] } }], [d], ctx); assert.equal(plan.length, 1); assert.equal(plan[0].id, 's2'); assert.equal(plan[0].debutLe, '2026-11-23'); assert.equal(L.libelleDebutPortage(plan[0]), '23/11/2026');
+  // rien à faire quand tout est à jour ; un changement de nom ou de jours est recopié sans toucher à l'état
+  assert.equal(L.planSynchroPortage([s1], [d], ctx).length, 0);
+  const arr = L.avecEvenementPortage(d, { type: 'arret', date: '2026-05-01', motif: 'm', par: 'x', le: 'y' });
+  const maj = L.planSynchroPortage([{ ...s1, nom: 'Durand', portage: { jours: [1, 2] } }], [arr], ctx); assert.equal(maj.length, 1); assert.equal(maj[0].nom, 'Durand'); assert.deepEqual(maj[0].jours, [1, 2]); assert.equal(maj[0].etat, 'arrete');
+  // fiche décochée : le document garde ses jours, seul le nom est recopié
+  const sans = L.planSynchroPortage([{ ...s1, nom: 'Durand', portage: null }], [d], ctx); assert.deepEqual(sans[0].jours, [0, 4]); assert.equal(sans[0].nom, 'Durand');
+  // case décochée => arrêt ; recochée après un arrêt => recommence ; simple modification de la fiche => rien
+  const a = L.evenementFichePortage(d, { avant: true, apres: false }, ctx); assert.equal(a.etat, 'arrete'); assert.equal(a.finLe, '2026-11-23'); assert.equal(a.historique.at(-1).precision, 'Portage retiré de la fiche');
+  assert.equal(L.evenementFichePortage(d, { avant: true, apres: true }, ctx), null); assert.equal(L.evenementFichePortage(a, { avant: false, apres: false }, ctx), null);
+  assert.equal(L.evenementFichePortage(arr, { avant: true, apres: true }, ctx), null, 'une personne arrêtée dont la case reste cochée ne recommence pas toute seule');
+  const re = L.evenementFichePortage(arr, { avant: false, apres: true }, ctx); assert.equal(re.etat, 'encours'); assert.equal(re.historique.at(-1).type, 'debut');
+  assert.equal(L.evenementFichePortage(arr, { avant: true, apres: false }, ctx), null, 'déjà arrêté : pas de second arrêt');
+  // décochée alors qu'interrompu => arrêt
+  const int = L.avecEvenementPortage(d, { type: 'interruption', date: '2026-10-01', motif: 'm', par: 'x', le: 'y' }); assert.equal(L.evenementFichePortage(int, { avant: true, apres: false }, ctx).etat, 'arrete');
+  // arrêt daté jamais avant le dernier événement
+  const futur = L.avecEvenementPortage(d, { type: 'interruption', date: '2027-01-10', motif: 'm', par: 'x', le: 'y' }); assert.equal(L.evenementFichePortage(futur, { avant: true, apres: false }, ctx).finLe, '2027-01-10');
+});
+t('lot B : statistiques annuelles et comparaison', () => {
+  const ev = (d, ...l) => l.reduce((x, e) => L.avecEvenementPortage(x, { par: 'p', le: 'l', motif: 'M1', ...e }), { id: d.id, historique: [], ...d });
+  const A = ev({ id: 'a', sexe: 'F', anneeNaissance: 1940, jours: [0, 1, 2, 3, 4] }, { type: 'debut', date: '2025-12-31', avant: true });
+  const B = ev({ id: 'b', sexe: 'H', anneeNaissance: 1955, jours: [0, 2] }, { type: 'debut', date: '2026-03-10' });
+  const C = ev({ id: 'c', sexe: 'F', anneeNaissance: 1930, jours: [1] }, { type: 'debut', date: '2025-12-31', avant: true }, { type: 'interruption', date: '2026-05-01', reprise: '2026-05-20', motif: 'M1' }, { type: 'reprise', date: '2026-05-20' }, { type: 'interruption', date: '2026-09-01', motif: 'M2' });
+  const D = ev({ id: 'd', sexe: '', anneeNaissance: 0, jours: [6] }, { type: 'debut', date: '2024-02-01' }, { type: 'arret', date: '2026-06-15', motif: 'M2' });
+  const E = ev({ id: 'e', sexe: 'F', anneeNaissance: 1948, jours: [3] }, { type: 'debut', date: '2025-04-01' }, { type: 'arret', date: '2025-11-30', motif: 'M3' });
+  const sans = { id: 'z', historique: [] };
+  const st = L.statsPortage([A, B, C, D, E, sans], 2026);
+  assert.equal(st.au1janvier, 3, 'A, C, D actifs au 1er janvier (E arrêté en 2025)'); assert.equal(st.au31decembre, 3, 'A, B, C (C est interrompu mais reste bénéficiaire ; D arrêté)'); assert.equal(st.au31decembreInterrompus, 1);
+  assert.equal(st.nouveaux, 1, 'B seulement : les « avant 2026 » ne sont pas nouveaux'); assert.equal(st.sorties, 1); assert.equal(st.interruptions, 2); assert.equal(st.personnesInterrompues, 1);
+  assert.deepEqual(st.motifsInterruption, [['M1', 1], ['M2', 1]]); assert.deepEqual(st.motifsSortie, [['M2', 1]]);
+  assert.equal(st.beneficiairesAnnee, 4, 'A, C, D (1er janvier) + B (nouveau)'); assert.deepEqual(st.sexes, { H: 1, F: 2, inconnu: 1 });
+  assert.deepEqual(Object.fromEntries(st.ages), { 'Moins de 60 ans': 0, '60 à 69 ans': 0, '70 à 79 ans': 1, '80 à 89 ans': 1, '90 ans et plus': 1, 'Âge non renseigné': 1 }, '2026-1955=71 → 70 à 79 ; 86 → 80 à 89 ; 96 → 90+');
+  assert.equal(st.joursSemaine.find(x => x[0] === 'Lundi')[1], 2); assert.equal(st.livraisonsParSemaine, 5 + 2 + 1);
+  // année précédente et exports
+  const p = L.statsPortage([A, B, C, D, E], 2025); assert.equal(p.au1janvier, 1, 'D seul : E commence en 2025, les « avant 2026 » ne sont pas encore là'); assert.equal(p.au31decembre, 3, 'A, C, D (E arrêté le 30/11) : les « avant 2026 » sont actifs dès le 31/12/2025'); assert.equal(p.sorties, 1); assert.equal(p.nouveaux, 1, 'E commence en 2025');
+  const T = L.tableauxPortage([A, B, C, D, E], 2027); assert.equal(T.length, 4); for (const t of T) for (const row of t.rows) assert.equal(row.length, t.cols.length);
+  assert.equal(T[0].rows[1][0], 'Bénéficiaires au 31 décembre'); assert.deepEqual(T[0].rows[1].slice(1), [3, 3, 'stable']);
+  const T26 = L.tableauxPortage([A, B, C, D, E], 2026); assert.deepEqual(T26[0].rows[1].slice(2), ['', ''], 'pas de comparaison avec une année non suivie dans l\'outil');
+  // une année sans donnée : pas de colonne de comparaison trompeuse
+  const T0 = L.tableauxPortage([B], 2026); assert.equal(T0[0].rows[0][2], ''); assert.equal(T0[0].rows[0][3], '');
+  assert.equal(L.statsPortage([], 2026).au31decembre, 0);
+});
+t('lot B : échanges avec le prestataire, alertes, tableaux de sauvegarde', () => {
+  assert.match(L.erreurEchangePortage({ date: '2026-01-02', type: 'zzz', objet: 'x', prestataire: 'P' }), /type/);
+  assert.match(L.erreurEchangePortage({ date: '2026-01-02', type: 'appel', objet: 'x', prestataire: '' }), /prestataire/i);
+  assert.match(L.erreurEchangePortage({ date: '', type: 'appel', objet: 'x', prestataire: 'P' }), /date/i); assert.match(L.erreurEchangePortage({ date: '2026-01-02', type: 'appel', objet: ' ', prestataire: 'P' }), /objet/i);
+  assert.equal(L.erreurEchangePortage({ date: '2026-01-02', type: 'reponse', objet: 'x', prestataire: 'P' }), '');
+  const auj = '2026-11-23', i1 = L.avecEvenementPortage({ id: 'a', prenom: 'Anne', nom: 'D', historique: [] }, { type: 'debut', date: '2026-01-01', par: 'p', le: 'l' });
+  const dep = L.avecEvenementPortage(i1, { type: 'interruption', date: '2026-11-01', reprise: '2026-11-20', motif: 'M', par: 'p', le: 'l' }), ok = L.avecEvenementPortage(i1, { type: 'interruption', date: '2026-11-01', reprise: '2026-12-20', motif: 'M', par: 'p', le: 'l' });
+  let al = L.alertesPortage({ portages: [dep, ok], echanges: [{ suiteAFaire: true }, { suiteAFaire: false }], auj }); assert.equal(al.length, 2); assert.match(al[0].texte, /1 reprise prévue dépassée : Anne D/); assert.equal(al[0].vue, 'portage'); assert.equal(al[0].tab, 'beneficiaires'); assert.match(al[1].texte, /1 suite à donner/); assert.equal(al[1].tab, 'echanges');
+  assert.equal(L.alertesPortage({ portages: [ok], echanges: [], auj }).length, 0);
+  assert.ok(L.alertesAccueil({ activites: [], inscriptions: [], seances: [], taches: [], auj, portages: [dep] }).some(a => a.vue === 'portage'));
+  const T = L.tableauxSuiviPortage([dep], [{ date: '2026-02-01', type: 'commande', prestataire: 'P', objet: 'o', suite: 's', suiteFaite: false, par: 'x' }]); assert.equal(T.length, 3); for (const t of T) for (const row of t.rows) assert.equal(row.length, t.cols.length); assert.equal(T[1].rows.length, 2);
+  // données de démonstration cohérentes : ids, états, alerte « reprise dépassée », aucun motif de santé
+  const dm = donneesDemo(); assert.equal(dm.portage.length, 5); for (const p of dm.portage) assert.ok(dm.seniors.some(s => s.id === p.id && s.portage), 'chaque bénéficiaire a sa fiche');
+  assert.ok(L.alertesPortage({ portages: dm.portage, echanges: dm.portageEchanges, auj: L.avecEvenementPortage ? new Date().toISOString().slice(0, 10) : '' }).length >= 2);
+  const tout = JSON.stringify(dm.portage) + JSON.stringify(dm.portageEchanges); assert.ok(!/hospital|maladie|décès|deces|EHPAD|médic/i.test(tout), 'aucune donnée de santé dans la démonstration');
+});
+t('lot B : chargement à la demande du portage (administratrice et équipe)', async () => {
+  const { besoins } = await import('../js/donnees.js');
+  const ctx = { auj: '2026-11-23', view: 'portage', ongletPortage: 'beneficiaires', activites: [], mesActivites: [] };
+  const cles = c => besoins(c).map(b => `${b.col}|${b.key}`);
+  for (const role of ['admin', 'intervenant', 'benevole']) assert.ok(cles({ ...ctx, role }).includes('portage|all'), role);
+  assert.ok(cles({ ...ctx, role: 'admin' }).includes('seniors|all'), 'l\'administratrice charge les fiches pour la mise en accord');
+  assert.ok(!cles({ ...ctx, role: 'intervenant' }).includes('seniors|all') && !cles({ ...ctx, role: 'benevole' }).includes('seniors|all'), 'l\'équipe ne lit pas les fiches');
+  assert.ok(!cles({ ...ctx, role: 'benevole' }).some(k => k.startsWith('portageEchanges')), 'échanges : seulement dans leur onglet');
+  assert.ok(cles({ ...ctx, role: 'benevole', ongletPortage: 'echanges' }).includes('portageEchanges|an-2026'));
+  assert.ok(cles({ ...ctx, role: 'admin', ongletPortage: 'echanges', anPortage: 2025 }).includes('portageEchanges|an-2025'));
+  assert.ok(!cles({ ...ctx, role: 'admin', portageActif: false }).includes('portage|all'), 'module désactivé : rien à charger');
+  assert.ok(!cles({ ...ctx, role: 'partenaire', uid: 'u' }).some(k => k.startsWith('portage')), 'le partenaire n\'a pas accès');
+  const accueil = cles({ ...ctx, role: 'admin', view: 'home', horizonPeremption: '' }); assert.ok(accueil.includes('portage|interrompus') && accueil.includes('portageEchanges|suites'), 'accueil : deux petites listes seulement');
+  assert.ok(!cles({ ...ctx, role: 'admin', view: 'home', portageActif: false }).some(k => k.startsWith('portage')));
+  assert.ok(!cles({ ...ctx, role: 'admin', view: 'planning', mois: { a: 2026, m: 10 } }).some(k => k.startsWith('portage')), 'les autres écrans ne lisent pas le portage');
+});

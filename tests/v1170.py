@@ -87,7 +87,7 @@ with sync_playwright() as p:
     pg.click('.modal [data-action=close]')
     # bénévole
     pg.click('text=Se déconnecter'); pg.wait_for_selector('text=Essayer comme bénévole'); pg.click('text=Essayer comme bénévole'); pg.wait_for_selector('nav.side')
-    check(pg.locator('nav.side .nav-btn[data-v]').count()==2 and pg.locator('nav.side [data-v=materiel]').count()==1,'bénévole : planning et matériel')
+    check(pg.locator('nav.side .nav-btn[data-v]').count()==3 and pg.locator('nav.side [data-v=materiel]').count()==1,'bénévole : planning, matériel et portage')
     pg.click('nav.side [data-v=materiel]'); pg.wait_for_selector('text=Nouvel article'); pg.click('[data-action=mat-tab][data-v=reserves]'); pg.wait_for_timeout(300)
     check(pg.locator('[data-action=mat-mvt]').count()>=1 and 'concerne' in pg.inner_text('main'),'bénévole : entrées/sorties et péremption lisibles')
     check(not SANTE.search(pg.inner_text('main')),'bénévole : aucun terme de santé')

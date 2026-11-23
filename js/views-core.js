@@ -1,7 +1,8 @@
 // Écrans : accueil, séniors, tâches, planning, bilans.
 import * as L from './logic.js';
 import { rappelSauvegarde, alerteLectures } from './backup.js';
-import { P } from './parametres.js';
+import { P, moduleActif } from './parametres.js';
+import * as pg from './portage.js';
 import { champListe, lireChamp } from './annuaire.js';
 import { itemPersonne } from './recherche.js';
 import { fusionForm } from './fusion.js';
@@ -14,7 +15,7 @@ const CATS_TACHE = ['Événements', 'Communication', 'Régie', 'Bénévoles', 'A
 /* ============ ACCUEIL ============ */
 // Alertes calculées sur les données déjà chargées (aucune lecture en plus) : tâches en retard ou prioritaires, places en attente, appels à valider
 function alertesCard() {
-  const al = L.alertesAccueil({ activites: S.cache.activites, inscriptions: S.cache.inscriptions, seances: S.cache.seances, taches: S.cache.taches, auj: aujourdhui(), echanges: S.cache.echanges, conventions: S.cache.conventions, fiches: S.compteursFiches || null, joursConv: P('partenaires.alerteJours'), materiel: S.cache.materiel, emprunts: S.cache.emprunts.filter(e => !e.rendu), joursPeremption: P('materiel.alertePeremptionJours') });
+  const al = L.alertesAccueil({ activites: S.cache.activites, inscriptions: S.cache.inscriptions, seances: S.cache.seances, taches: S.cache.taches, auj: aujourdhui(), echanges: S.cache.echanges, conventions: S.cache.conventions, fiches: S.compteursFiches || null, portages: moduleActif('portage') ? S.cache.portage : [], echangesPortage: moduleActif('portage') ? S.cache.portageEchanges : [], joursConv: P('partenaires.alerteJours'), materiel: S.cache.materiel, emprunts: S.cache.emprunts.filter(e => !e.rendu), joursPeremption: P('materiel.alertePeremptionJours') });
   const lib = { crit: ['p-crit', 'Urgent'], warn: ['p-warn', 'À regarder'], info: ['p-bleu', 'À faire'] };
   return `<div class="card alertes" style="margin-top:16px"><h2>Alertes</h2>${al.length ? al.map(a => `<button class="row" style="width:100%;background:none;border:0;border-top:1px solid var(--ligne);text-align:left" data-action="${a.act ? 'open-act' : 'nav'}" ${a.act ? `data-id="${a.act}"` : `data-v="${a.vue}"${a.tab ? ` data-tab="${a.tab}"` : ''}`}>
     <span class="pill ${lib[a.niveau][0]}">${lib[a.niveau][1]}</span><div class="grow">${esc(a.texte)}</div></button>`).join('') : '<div class="empty"><b>Aucune alerte</b>Tout est à jour.</div>'}</div>`;
@@ -180,6 +181,7 @@ function seniorForm(id) {
     }
     Object.assign(doc, L.champsCalcules(doc));
     const nid = await sauver('seniors', doc, 'Fiche enregistrée');
+    await pg.apresFiche(id ? s : null, { ...doc, id: nid }); // portage : nom, jours, case « Reçoit le portage » cochée ou décochée
     // met à jour le nom recopié dans les inscriptions et fiches (les intervenants ne voient que ces copies) :
     // pour la personne, et pour ses homonymes (leur libellé « (né·e en …) » change selon qu'un·e homonyme existe ou non)
     const apres = autres.concat([{ ...doc, id: nid }]);
@@ -192,8 +194,10 @@ function seniorForm(id) {
   };
   if (id) $('#delSenior').onclick = () => confirmer('Supprimer cette fiche ?', `${s.prenom} ${s.nom} sera retiré·e de la liste, de ses inscriptions et de ses fiches de sortie. Les appels déjà validés restent dans les bilans.`, 'Supprimer', async () => {
     const liens = {}; for (const col of ['inscriptions', 'fiches']) liens[col] = await store.lire(col, ['seniorId', '==', id]);
-    await mettreCorbeille('seniors', s, { inscriptions: liens.inscriptions });
+    let docsPortage = []; try { docsPortage = await store.lire('portage', ['seniorId', '==', id]); } catch (e) { /* module portage non encore autorisé par les règles : rien à retirer */ }
+    await mettreCorbeille('seniors', s, { inscriptions: liens.inscriptions, portage: docsPortage });
     for (const col of ['inscriptions', 'fiches']) for (const r of liens[col]) await store.remove(col, r.id);
+    for (const r of docsPortage) await store.remove('portage', r.id);
     await store.remove('seniors', id);
     // ses homonymes n'ont plus besoin du complément « (né·e en …) »
     const reste = S.cache.seniors.filter(x => x.id !== id);
@@ -375,7 +379,7 @@ function exportBilan() {
 
 /* ============ ACTIONS ============ */
 export const actions = {
-  nav: el => { if (el.dataset.tab) { if (el.dataset.v === 'materiel') S.ongletMat = el.dataset.tab; else if (el.dataset.v === 'seniors') S.ongletSen = el.dataset.tab; else S.ongletPart = el.dataset.tab; } go(el.dataset.v); },
+  nav: el => { if (el.dataset.tab) { if (el.dataset.v === 'materiel') S.ongletMat = el.dataset.tab; else if (el.dataset.v === 'seniors') S.ongletSen = el.dataset.tab; else if (el.dataset.v === 'portage') S.ongletPortage = el.dataset.tab; else S.ongletPart = el.dataset.tab; } go(el.dataset.v); },
   'senior-form': el => seniorForm(el.dataset.id),
   'export-seniors': () => exportSeniors(),
   'filtre-statut': el => { S.filtreStatut = el.dataset.v; render(); },

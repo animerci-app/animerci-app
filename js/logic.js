@@ -363,7 +363,7 @@ export function programme(activites, du, au) {
   return { mois, regulieres };
 }
 // Alertes de l'accueil, calculées sur les données déjà chargées (aucune lecture en plus)
-export function alertesAccueil({ activites, inscriptions, seances, taches, auj, echanges = [], conventions = [], joursConv = 30, materiel = [], emprunts = [], joursPeremption = 30, fiches = null }) {
+export function alertesAccueil({ activites, inscriptions, seances, taches, auj, echanges = [], conventions = [], joursConv = 30, materiel = [], emprunts = [], joursPeremption = 30, fiches = null, portages = [], echangesPortage = [] }) {
   const A = [], nomAct = id => (activites.find(a => a.id === id) || {}).nom;
   const ouvertes = taches.filter(t => !t.done);
   const retard = ouvertes.filter(t => t.echeance && t.echeance < auj).sort((x, y) => x.echeance.localeCompare(y.echeance));
@@ -377,6 +377,7 @@ export function alertesAccueil({ activites, inscriptions, seances, taches, auj, 
   A.push(...alertesPartenaires({ echanges, conventions, auj, joursConv }));
   A.push(...alertesMateriel({ materiel, emprunts, auj, joursPeremption }));
   if (fiches) A.push(...alertesFiches(fiches));
+  A.push(...alertesPortage({ portages, echanges: echangesPortage, auj }));
   return A;
 }
 
@@ -782,4 +783,190 @@ export function tableauVerification(seniors, auj, mois = 12, residence = '') {
     cols: ['Nom', 'Prénom', 'Naissance', 'Adresse ou lieu de vie', 'Commune', 'Tél. fixe', 'Tél. portable', 'E-mail', 'Proches (nom, lien, tél.)', 'Adhésion ' + auj.slice(0, 4), 'Dernière vérification', 'Vérifié'],
     rows: l.map(s => { const t = telephones(s); return [s.nom, s.prenom, fmtDate(s.naissance), s.statut === 'resident' ? (residence ? residence + (s.appartement ? ', appt ' + s.appartement : '') : 'Résidence') : s.adresse || '', s.statut === 'resident' ? '' : s.commune || '', t.fixe, t.portable, s.email || '',
       prochesDe(s).map(p => [p.nom, p.lien, p.tel].filter(Boolean).join(', ')).join(' ; '), s.statut === 'adherent' ? LIBELLES_ADHESION[statutAdhesion(s, Number(auj.slice(0, 4)))] : '—', s.verifieLe ? fmtDate(s.verifieLe) : 'Jamais', '☐']; }) };
+}
+
+/* ---------- Lot B (v1.19.0) : portage de repas à domicile — suivi des bénéficiaires, échanges avec le prestataire, statistiques annuelles ---------- */
+// Tout relève de l'ORGANISATION du service (qui reçoit le portage, quels jours, depuis quand, jusqu'à quand) : aucun motif de santé n'est proposé ni enregistré.
+// Un document « portage » par bénéficiaire (même identifiant que la fiche de la personne). Il recopie le strict nécessaire (nom, sexe, année de naissance, jours)
+// pour que l'équipe, qui ne lit pas les fiches, puisse suivre le portage ; l'historique des événements en est la source de vérité.
+export const ETATS_PORTAGE = { encours: 'En cours', interrompu: 'Interrompu', arrete: 'Arrêté' };
+export const TYPES_EVENEMENT_PORTAGE = { debut: 'Début du service', interruption: 'Interruption', reprise: 'Reprise', arret: 'Arrêt définitif' };
+export const TYPES_ECHANGE_PORTAGE = { appel: 'Appel', commande: 'Modification de commande', livraison: 'Problème de livraison', reclamation: 'Réclamation', demande: 'Demande particulière', reponse: 'Réponse apportée' };
+export const STATUTS_ECHANGE_PORTAGE = { ouvert: 'À suivre', clos: 'Clos' };
+export const ANNEE_REFERENCE_PORTAGE = 2026; // « avant 2026 » : bénéficiaires déjà présents lors de la mise en service de l'outil
+const DATE_ISO = /^\d{4}-\d{2}-\d{2}$/;
+export const TRANCHES_AGE_PORTAGE = [['Moins de 60 ans', 0, 59], ['60 à 69 ans', 60, 69], ['70 à 79 ans', 70, 79], ['80 à 89 ans', 80, 89], ['90 ans et plus', 90, 200]];
+
+/** Événements d'un bénéficiaire, dans l'ordre chronologique (à date égale, l'ordre de saisie est conservé). */
+export function evenementsPortage(doc) {
+  return (doc && Array.isArray(doc.historique) ? doc.historique : []).map((e, i) => ({ e, i })).filter(x => x.e && TYPES_EVENEMENT_PORTAGE[x.e.type] && DATE_ISO.test(x.e.date || ''))
+    .sort((a, b) => a.e.date.localeCompare(b.e.date) || a.i - b.i).map(x => x.e);
+}
+/** État d'un bénéficiaire à une date donnée : 'avant' (pas encore bénéficiaire), 'encours', 'interrompu' ou 'arrete'. */
+export function etatPortageAu(doc, date) {
+  let etat = 'avant';
+  for (const e of evenementsPortage(doc)) {
+    if (e.date > date) break;
+    etat = e.type === 'debut' || e.type === 'reprise' ? 'encours' : e.type === 'interruption' ? 'interrompu' : 'arrete';
+  }
+  return etat;
+}
+/** Champs recopiés dans le document pour pouvoir filtrer côté serveur (état actuel, reprise prévue, date de fin). */
+export function champsPortage(doc) {
+  const ev = evenementsPortage(doc), der = ev[ev.length - 1] || null;
+  const etat = !der ? 'encours' : der.type === 'interruption' ? 'interrompu' : der.type === 'arret' ? 'arrete' : 'encours';
+  return { etat, reprisePrevue: etat === 'interrompu' && der.reprise ? der.reprise : '', finLe: etat === 'arrete' ? der.date : '', debutLe: (ev.find(e => e.type === 'debut') || {}).date || '' };
+}
+/** Texte de la date de début : « avant 2026 » pour les bénéficiaires déjà présents à la mise en service, sinon la date. */
+export function libelleDebutPortage(doc) {
+  const d = evenementsPortage(doc).find(e => e.type === 'debut');
+  return !d ? '' : d.avant ? `avant ${ANNEE_REFERENCE_PORTAGE}` : fmtDate(d.date);
+}
+/** Message d'erreur (ou '') pour un événement à ajouter à l'historique d'un bénéficiaire. */
+export function erreurEvenementPortage(doc, ev, motifs = []) {
+  if (!TYPES_EVENEMENT_PORTAGE[ev.type]) return 'Type d\'événement inconnu.';
+  if (!DATE_ISO.test(ev.date || '')) return 'Indiquez la date.';
+  const etat = champsPortage(doc).etat, der = evenementsPortage(doc).slice(-1)[0];
+  if (ev.type === 'interruption' && etat !== 'encours') return 'Seul un portage en cours peut être interrompu.';
+  if (ev.type === 'reprise' && etat !== 'interrompu') return 'Seul un portage interrompu peut reprendre.';
+  if (ev.type === 'arret' && etat === 'arrete') return 'Ce portage est déjà arrêté.';
+  if (ev.type === 'debut' && etat !== 'arrete' && der) return 'Le service est déjà en cours.';
+  if (der && ev.date < der.date) return `La date ne peut pas précéder le dernier événement (${fmtDate(der.date)}).`;
+  if (ev.type === 'interruption' || ev.type === 'arret') {
+    if (!String(ev.motif || '').trim()) return 'Choisissez un motif.';
+    if (motifs.length && !motifs.includes(ev.motif) && !(doc.historique || []).some(e => e.motif === ev.motif)) return 'Ce motif n\'est pas dans la liste.';
+  }
+  if (ev.type === 'interruption' && ev.reprise) {
+    if (!DATE_ISO.test(ev.reprise)) return 'La date de reprise prévue n\'est pas valide.';
+    if (ev.reprise < ev.date) return 'La reprise prévue ne peut pas précéder le début de l\'interruption.';
+  }
+  return '';
+}
+/** Ajoute un événement (sans le valider : voir erreurEvenementPortage) et recalcule les champs d'état. */
+export function avecEvenementPortage(doc, ev) {
+  const e = { type: ev.type, date: ev.date };
+  if (ev.avant) e.avant = true;
+  if (ev.type === 'interruption' && ev.reprise) e.reprise = ev.reprise;
+  if (ev.type === 'interruption' || ev.type === 'arret') { e.motif = String(ev.motif || '').trim(); e.precision = String(ev.precision || '').trim(); }
+  e.par = ev.par || ''; e.le = ev.le || '';
+  const hist = [...(doc.historique || []), e], res = { ...doc, historique: hist };
+  return { ...res, ...champsPortage(res) };
+}
+const anneeNaissance = n => { const a = Number(String(n || '').slice(0, 4)); return a >= 1850 && a <= 2200 ? a : 0; };
+/** Recopie, depuis la fiche d'une personne, ce que l'équipe doit voir du portage (le moins possible : pas de date de naissance complète, pas de coordonnées). */
+export function copiePortage(senior, anciens = {}) {
+  const jours = [...new Set((senior.portage && senior.portage.jours) || [])].filter(j => Number.isInteger(j) && j >= 0 && j < 7).sort((a, b) => a - b);
+  return { seniorId: senior.id, nom: String(senior.nom || ''), prenom: String(senior.prenom || ''), sexe: senior.sexe === 'H' || senior.sexe === 'F' ? senior.sexe : '', anneeNaissance: anneeNaissance(senior.naissance), jours, precision: String((senior.portage && senior.portage.precision) || ''), ...anciens };
+}
+/**
+ * Compare les fiches et les documents « portage » et dit quoi écrire, SANS jamais changer l'état d'un bénéficiaire :
+ * un bénéficiaire sans document reçoit un début (« avant 2026 » à la première initialisation, sinon la date du jour) ; un document dont la fiche a changé (nom, jours…) est mis à jour.
+ * `premiere` : true seulement à la toute première ouverture du Portage (les bénéficiaires déjà présents sont alors « avant 2026 »).
+ */
+export function planSynchroPortage(seniors, portages, { auj, par = '', le = '', premiere = false } = {}) {
+  const parId = Object.fromEntries((portages || []).map(p => [p.id, p])), A = [];
+  for (const s of seniors || []) {
+    const p = parId[s.id];
+    if (!p) {
+      if (!s.portage) continue;
+      const base = { id: s.id, ...copiePortage(s), historique: [] };
+      A.push(avecEvenementPortage(base, premiere ? { type: 'debut', date: `${ANNEE_REFERENCE_PORTAGE - 1}-12-31`, avant: true, par, le } : { type: 'debut', date: auj, par, le }));
+      continue;
+    }
+    const copie = copiePortage(s), change = ['nom', 'prenom', 'sexe', 'anneeNaissance', 'precision'].some(k => p[k] !== copie[k]) || JSON.stringify(p.jours || []) !== JSON.stringify(copie.jours);
+    // une fiche sans portage garde ses jours déjà recopiés (l'historique reste lisible) : on ne met à jour que nom, sexe, année de naissance
+    if (change) A.push({ ...p, ...(s.portage ? copie : { nom: copie.nom, prenom: copie.prenom, sexe: copie.sexe, anneeNaissance: copie.anneeNaissance }), id: p.id });
+  }
+  return A;
+}
+/**
+ * Changement de la case « Reçoit le portage » dans la fiche : décochée, elle arrête le service ; recochée après un arrêt, elle le fait recommencer.
+ * Renvoie le document mis à jour, ou null s'il n'y a rien à changer (l'état n'est jamais modifié par une simple modification de la fiche).
+ */
+export function evenementFichePortage(doc, { avant, apres }, { auj, par = '', le = '' } = {}) {
+  if (!doc || !!avant === !!apres) return null;
+  const etat = champsPortage(doc).etat, der = evenementsPortage(doc).slice(-1)[0] || { date: auj }, date = auj < der.date ? der.date : auj;
+  if (!apres && etat !== 'arrete') return avecEvenementPortage(doc, { type: 'arret', date, motif: 'Autre motif d\'organisation', precision: 'Portage retiré de la fiche', par, le });
+  if (apres && etat === 'arrete') return avecEvenementPortage(doc, { type: 'debut', date, par, le });
+  return null;
+}
+/** Message d'erreur (ou '') pour la correction de la date de début : elle ne peut pas suivre l'événement suivant. */
+export function erreurDebutPortage(doc, { date, avant }) {
+  const ordre = evenementsPortage(doc), i = ordre.findIndex(e => e.type === 'debut'); if (i < 0) return 'Aucun début de service à corriger.';
+  const d = avant ? `${ANNEE_REFERENCE_PORTAGE - 1}-12-31` : date;
+  if (!DATE_ISO.test(d || '')) return 'Indiquez la date de début.';
+  const suivant = ordre[i + 1]; if (suivant && d > suivant.date) return `La date de début ne peut pas suivre l'événement suivant (${fmtDate(suivant.date)}).`;
+  return '';
+}
+/** Corrige la date de début (ou la marque « avant 2026 ») : le premier début de service de l'historique. */
+export function avecDebutPortage(doc, { date, avant, par = '', le = '' }) {
+  const cible = evenementsPortage(doc).find(e => e.type === 'debut'), hist = (doc.historique || []).map(e => {
+    if (e !== cible) return e;
+    const n = { ...e, date: avant ? `${ANNEE_REFERENCE_PORTAGE - 1}-12-31` : date, corrigePar: par, corrigeLe: le }; if (avant) n.avant = true; else delete n.avant; return n;
+  });
+  const res = { ...doc, historique: hist }; return { ...res, ...champsPortage(res) };
+}
+/** Statistiques d'une année civile (cahier 9.5). Un bénéficiaire « en interruption » est toujours bénéficiaire ; seul l'arrêt définitif le sort. */
+export function statsPortage(docs, an) {
+  const debutAn = `${an - 1}-12-31`, finAn = `${an}-12-31`, actif = e => e === 'encours' || e === 'interrompu';
+  const liste = (docs || []).filter(d => evenementsPortage(d).length);
+  const au1 = liste.filter(d => actif(etatPortageAu(d, debutAn))), au31 = liste.filter(d => actif(etatPortageAu(d, finAn)));
+  const dansAn = (d, type) => evenementsPortage(d).filter(e => e.type === type && e.date >= `${an}-01-01` && e.date <= finAn);
+  const nouveaux = liste.filter(d => evenementsPortage(d).some(e => e.type === 'debut' && !e.avant && e.date >= `${an}-01-01` && e.date <= finAn));
+  const interruptions = liste.flatMap(d => dansAn(d, 'interruption').map(e => ({ d, e }))), sorties = liste.flatMap(d => dansAn(d, 'arret').map(e => ({ d, e })));
+  const motifs = evts => { const m = {}; for (const { e } of evts) { const k = e.motif || 'Motif non précisé'; m[k] = (m[k] || 0) + 1; } return Object.entries(m).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'fr')); };
+  const annee = new Map(); for (const d of [...au1, ...nouveaux]) annee.set(d.id, d); const deLAnnee = [...annee.values()];
+  const sexes = { H: 0, F: 0, inconnu: 0 }; for (const d of deLAnnee) sexes[d.sexe === 'H' || d.sexe === 'F' ? d.sexe : 'inconnu']++;
+  const ages = TRANCHES_AGE_PORTAGE.map(([lib, a, b]) => [lib, deLAnnee.filter(d => d.anneeNaissance && an - d.anneeNaissance >= a && an - d.anneeNaissance <= b).length]);
+  ages.push(['Âge non renseigné', deLAnnee.filter(d => !d.anneeNaissance).length]);
+  const joursSem = JOURS_PORTAGE.map((j, i) => [j, au31.filter(d => (d.jours || []).includes(i)).length]);
+  const totalJours = au31.reduce((n, d) => n + (d.jours || []).length, 0);
+  return { an, au1janvier: au1.length, au1janvierInterrompus: au1.filter(d => etatPortageAu(d, debutAn) === 'interrompu').length, au31decembre: au31.length, au31decembreInterrompus: au31.filter(d => etatPortageAu(d, finAn) === 'interrompu').length,
+    nouveaux: nouveaux.length, sorties: new Set(sorties.map(x => x.d.id)).size, interruptions: interruptions.length, personnesInterrompues: new Set(interruptions.map(x => x.d.id)).size,
+    motifsInterruption: motifs(interruptions), motifsSortie: motifs(sorties), beneficiairesAnnee: deLAnnee.length, sexes, ages, joursSemaine: joursSem, livraisonsParSemaine: totalJours };
+}
+const evolution = (a, b) => (b === undefined ? '' : a === b ? 'stable' : `${a > b ? '+' : '−'}${Math.abs(a - b)}`);
+/** Tableaux d'export (Excel, PDF) des statistiques annuelles, avec l'année précédente en comparaison. */
+export function tableauxPortage(docs, an) {
+  // Pas de comparaison avant la mise en service (« avant 2026 ») : l'année précédente n'a pas été suivie dans l'outil, un zéro serait trompeur.
+  const s = statsPortage(docs, an), p = statsPortage(docs, an - 1), vide = an - 1 < ANNEE_REFERENCE_PORTAGE || (!p.au31decembre && !p.nouveaux && !p.sorties && !p.interruptions && !p.au1janvier);
+  const l = (lib, a, b) => [lib, a, vide ? '' : b, vide ? '' : evolution(a, b)];
+  return [
+    { nom: `Chiffres ${an}`, titre: `Portage de repas : chiffres de l'année ${an}`, cols: ['Indicateur', String(an), String(an - 1), 'Évolution'],
+      rows: [l('Bénéficiaires au 1er janvier', s.au1janvier, p.au1janvier), l('Bénéficiaires au 31 décembre', s.au31decembre, p.au31decembre), l('dont interrompus temporairement au 31 décembre', s.au31decembreInterrompus, p.au31decembreInterrompus),
+        l('Nouveaux bénéficiaires', s.nouveaux, p.nouveaux), l('Sorties définitives', s.sorties, p.sorties), l('Interruptions temporaires', s.interruptions, p.interruptions), l('Personnes concernées par une interruption', s.personnesInterrompues, p.personnesInterrompues),
+        l('Bénéficiaires au cours de l\'année', s.beneficiairesAnnee, p.beneficiairesAnnee)] },
+    { nom: 'Motifs', titre: `Motifs des interruptions et des sorties en ${an}`, cols: ['Type', 'Motif', 'Nombre'], rows: [...s.motifsInterruption.map(([m, n]) => ['Interruption', m, n]), ...s.motifsSortie.map(([m, n]) => ['Sortie définitive', m, n])] },
+    { nom: 'Profil', titre: `Profil des bénéficiaires de l'année ${an} (âge au 31 décembre)`, cols: ['Rubrique', 'Valeur', 'Nombre'], rows: [['Sexe', 'Hommes', s.sexes.H], ['Sexe', 'Femmes', s.sexes.F], ['Sexe', 'Non renseigné', s.sexes.inconnu], ...s.ages.map(([a, n]) => ['Tranche d\'âge', a, n])] },
+    { nom: 'Jours', titre: `Jours de livraison des bénéficiaires au 31 décembre ${an}`, cols: ['Jour', 'Bénéficiaires livrés'], rows: s.joursSemaine.map(([j, n]) => [j, n]) }
+  ];
+}
+/** Tableaux de la sauvegarde Excel : un bénéficiaire par ligne, tous les événements, et les échanges avec le prestataire. */
+export function tableauxSuiviPortage(docs = [], echanges = []) {
+  const tri = (a, b) => String(a).localeCompare(String(b), 'fr'), liste = docs.filter(d => evenementsPortage(d).length).sort((a, b) => tri((a.nom || '') + (a.prenom || ''), (b.nom || '') + (b.prenom || '')));
+  return [
+    { nom: 'Portage', titre: 'Portage de repas : bénéficiaires', cols: ['Nom', 'Prénom', 'Situation', 'Début du service', 'Jours de livraison', 'Reprise prévue', 'Arrêt le'],
+      rows: liste.map(d => { const c = champsPortage(d); return [d.nom || '', d.prenom || '', ETATS_PORTAGE[c.etat], libelleDebutPortage(d), libelleFrequence({ jours: d.jours, precision: d.precision }), fmtDate(c.reprisePrevue), fmtDate(c.finLe)]; }) },
+    { nom: 'Historique portage', titre: 'Portage de repas : historique des événements', cols: ['Nom', 'Prénom', 'Date', 'Événement', 'Reprise prévue', 'Motif', 'Précision', 'Saisi par', 'Le'],
+      rows: liste.flatMap(d => evenementsPortage(d).map(e => [d.nom || '', d.prenom || '', e.avant ? `avant ${ANNEE_REFERENCE_PORTAGE}` : fmtDate(e.date), TYPES_EVENEMENT_PORTAGE[e.type], fmtDate(e.reprise), e.motif || '', e.precision || '', e.par || '', e.le ? fmtDate(e.le.slice(0, 10)) : ''])) },
+    { nom: 'Échanges portage', titre: 'Portage de repas : échanges avec le prestataire', cols: ['Date', 'Type', 'Prestataire', 'Objet', 'Résumé', 'Suite à donner', 'Pour le', 'Suite faite', 'Saisi par'],
+      rows: [...echanges].sort((a, b) => (a.date || '').localeCompare(b.date || '')).map(e => [fmtDate(e.date), TYPES_ECHANGE_PORTAGE[e.type] || e.type || '', e.prestataire || '', e.objet || '', e.resume || '', e.suite || '', fmtDate(e.suiteDate), e.suiteFaite ? 'Oui' : '', e.par || '']) }
+  ];
+}
+/** Message d'erreur (ou '') pour un échange avec le prestataire. */
+export function erreurEchangePortage({ date, type, objet, prestataire }) {
+  if (!TYPES_ECHANGE_PORTAGE[type]) return 'Choisissez le type d\'échange.';
+  if (!DATE_ISO.test(date || '')) return 'Indiquez la date.';
+  if (!String(prestataire || '').trim()) return 'Indiquez le prestataire (nom à renseigner une fois pour toutes dans Paramètres).';
+  if (!String(objet || '').trim()) return 'Donnez un objet à l\'échange.';
+  return '';
+}
+/** Alertes de l'accueil : reprises prévues dépassées, suites à donner aux échanges avec le prestataire. */
+export function alertesPortage({ portages = [], echanges = [], auj }) {
+  const A = [], nom = d => `${d.prenom || ''} ${d.nom || ''}`.trim() || 'Personne';
+  const dues = portages.filter(d => champsPortage(d).etat === 'interrompu' && champsPortage(d).reprisePrevue && champsPortage(d).reprisePrevue < auj).sort((a, b) => champsPortage(a).reprisePrevue.localeCompare(champsPortage(b).reprisePrevue));
+  if (dues.length) A.push({ niveau: 'warn', texte: `Portage : ${dues.length} reprise${dues.length > 1 ? 's' : ''} prévue${dues.length > 1 ? 's' : ''} dépassée${dues.length > 1 ? 's' : ''} : ${dues.slice(0, 3).map(nom).join(', ')}${dues.length > 3 ? '…' : ''}`, vue: 'portage', tab: 'beneficiaires' });
+  const suites = echanges.filter(e => e.suiteAFaire);
+  if (suites.length) A.push({ niveau: 'info', texte: `Portage : ${suites.length} suite${suites.length > 1 ? 's' : ''} à donner avec le prestataire`, vue: 'portage', tab: 'echanges' });
+  return A;
 }

@@ -50,8 +50,12 @@ export async function fusionner(A, B) {
       await store.save('seances', { id: s.id, presences: p });
     }
   }
-  // 5. le doublon va à la corbeille, et ses homonymes éventuels sont réétiquetés
-  await mettreCorbeille('seniors', B, { inscriptions: insB });
+  // 5. portage de repas : la fiche conservée garde son suivi ; sinon elle reprend celui du doublon (avec son historique). Le document du doublon part avec lui à la corbeille.
+  let pgA = [], pgB = []; try { pgA = await store.lire('portage', ['seniorId', '==', A.id]); pgB = await store.lire('portage', ['seniorId', '==', B.id]); } catch (e) { /* module portage non encore autorisé par les règles */ }
+  if (pgB.length && !pgA.length) await store.save('portage', { ...pgB[0], ...L.copiePortage({ ...Aap, id: A.id }), id: A.id });
+  // 6. le doublon va à la corbeille, et ses homonymes éventuels sont réétiquetés
+  await mettreCorbeille('seniors', B, { inscriptions: insB, portage: pgB });
+  for (const r of pgB) await store.remove('portage', r.id);
   await store.remove('seniors', B.id);
   for (const p of [Aap, ...L.homonymes(Aap, reste)]) {
     const n = L.nomSenior(p, reste.map(s => s.id === A.id ? Aap : s));

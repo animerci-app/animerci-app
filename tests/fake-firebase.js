@@ -26,6 +26,7 @@
         if (op === 'create') return sienne(newData.activiteId) && newData.valide !== true;
         if (op === 'update') return sienne(data.activiteId) && data.valide !== true && newData.valide !== true && newData.activiteId === data.activiteId;
         return false;
+      case 'portage': case 'portageEchanges': return ['admin', 'intervenant', 'benevole'].includes(r) ? (op !== 'delete' || admin) : false;
       case 'materiel': case 'emprunts': return ['admin', 'intervenant', 'benevole'].includes(r) ? (op !== 'delete' || admin) : false;
       case 'mouvements': return op === 'read' || op === 'create' ? ['admin', 'intervenant', 'benevole'].includes(r) : op === 'update' ? false : admin;
       case 'parametres': return op === 'read' ? ['admin', 'intervenant', 'benevole', 'partenaire'].includes(r) : admin;
@@ -86,7 +87,7 @@
         let autorise;
         if (q.col === 'activites') autorise = ['admin', 'intervenant', 'benevole'].includes(r);
         else if (q.col === 'parametres') autorise = ['admin', 'intervenant', 'benevole', 'partenaire'].includes(r);
-        else if (['materiel', 'emprunts', 'mouvements'].includes(q.col)) autorise = ['admin', 'intervenant', 'benevole'].includes(r);
+        else if (['materiel', 'emprunts', 'mouvements', 'portage', 'portageEchanges'].includes(q.col)) autorise = ['admin', 'intervenant', 'benevole'].includes(r);
         else if (q.col === 'echanges') autorise = r === 'admin' || (r === 'partenaire' && q.filtres.some(w => w.f === 'parUid' && w.op === '==' && w.v === uid));
         else if (['inscriptions', 'seances'].includes(q.col)) autorise = r === 'admin' || (r === 'intervenant' && q.filtres.some(w => w.f === 'activiteId' && w.op === '==' && acts(uid).includes(w.v)));
         else if (q.col === 'users') autorise = r === 'admin' || (uid && q.filtres.length === 0 && false);

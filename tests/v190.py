@@ -18,7 +18,7 @@ with sync_playwright() as p:
     t=pg.inner_text('#im-zone'); check('4 lignes lues : 4 nouvelles' in t,'4 personnes lues'); pg.click('summary:has-text("Voir les remarques")'); t=pg.inner_text('#im-zone'); check('classée Résident' in t,'remarque : adresse de la résidence → Résident·e')
     pg.click('#im-ok'); pg.wait_for_selector('text=Import terminé'); pg.wait_for_timeout(400)
     pg.click('[data-action=filtre-statut][data-v=portage]'); pg.wait_for_timeout(300); l=pg.inner_text('#liste')
-    check(l.count('Portage :')==4,'filtre « Portage de repas » : 4 personnes'); check('Tous les jours' in l and 'Lundi, mercredi, vendredi' in l and 'Lundi au vendredi' in l and 'Au choix' in l,'jours de portage lisibles dans la liste')
+    check(l.count('Portage :')==9,'filtre « Portage de repas » : 9 personnes (5 de la démonstration + 4 importées)'); check('Tous les jours' in l and 'Lundi, mercredi, vendredi' in l and 'Lundi au vendredi' in l and 'Au choix' in l,'jours de portage lisibles dans la liste')
     pg.click('[data-action=filtre-statut][data-v=resident]'); pg.wait_for_timeout(300); l=pg.inner_text('#liste')
     check('TESTTROIS' in l and 'Résidence Test' in l and 'TESTUN' not in l,'TESTTROIS (adresse de la résidence) est Résident·e, lieu de vie = la résidence')
     pg.click('[data-action=filtre-statut][data-v=tous]')
@@ -29,7 +29,7 @@ with sync_playwright() as p:
     l=pg.inner_text('#liste'); check('sauf jours fériés' in l,'jour ajouté et précision enregistrés')
     # 4. nouvelle personne sans portage ; décocher retire le portage
     pg.click('.cand:has-text("TESTQUATRE")'); pg.wait_for_selector('#n13'); pg.uncheck('#n13'); check(not pg.is_visible('.pj'),'décoché : jours masqués'); pg.click('#saveSenior'); pg.wait_for_timeout(500)
-    pg.click('[data-action=filtre-statut][data-v=portage]'); pg.wait_for_timeout(300); check(pg.inner_text('#liste').count('Portage :')==3,'TESTQUATRE retiré du portage : 3 restent')
+    pg.click('[data-action=filtre-statut][data-v=portage]'); pg.wait_for_timeout(300); check(pg.inner_text('#liste').count('Portage :')==8,'TESTQUATRE retiré du portage : 8 restent')
     pg.click('[data-action=filtre-statut][data-v=tous]')
     # 5. une adhérente existante reçoit seulement son portage
     pg.click('text=Importer une liste'); pg.wait_for_selector('#im-t',state='attached'); pg.click('summary:has-text("coller une liste")'); pg.fill('#im-t',"Nom/Prénom\tDate anniversaire\nTESTCINQ Alice\t02/02/1945"); pg.select_option('#im-d1','adherent'); pg.click('#im-lire'); pg.wait_for_selector('.im-choix p'); pg.click('#im-ok'); pg.wait_for_selector('text=Import terminé'); pg.wait_for_timeout(400)

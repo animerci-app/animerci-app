@@ -1,5 +1,5 @@
 // Données FICTIVES pour le mode démonstration. Aucune personne réelle.
-import { uid, completerSenior } from './logic.js';
+import { uid, completerSenior, copiePortage, avecEvenementPortage, ANNEE_REFERENCE_PORTAGE } from './logic.js';
 
 const iso = d => d.toISOString().slice(0, 10);
 const plusJours = n => { const d = new Date(); d.setDate(d.getDate() + n); return iso(d); };
@@ -115,5 +115,22 @@ export function donneesDemo() {
     { id: 'mv-1', materielId: 'm-caf', materielNom: 'Café moulu', date: plusJours(-10), sens: 'entree', quantite: 6, lot: '', motif: 'Achat', note: '', apres: 6, par: 'Démonstration', parUid: '', creeLe: plusJours(-10) + 'T09:00:00.000Z' },
     { id: 'mv-2', materielId: 'm-caf', materielNom: 'Café moulu', date: plusJours(-3), sens: 'sortie', quantite: 3, lot: '', motif: 'Atelier', note: '', apres: 3, par: 'Démonstration', parUid: '', creeLe: plusJours(-3) + 'T14:00:00.000Z' }
   ];
-  return { seniors, activites, inscriptions, seances, fiches, taches, contacts, echanges, conventions, materiel, emprunts, mouvements };
+  // Portage de repas (lot B) : cinq bénéficiaires fictifs (en cours depuis avant 2026, interrompue dont la reprise prévue est dépassée, interrompue, arrêtée, récente) et deux échanges avec un prestataire fictif.
+  const JOURS_DEMO = { s2: [0, 1, 2, 3, 4], s5: [0, 2, 4], s8: [0, 1, 2, 3, 4, 5, 6], s12: [1, 3], s14: [0, 2, 4] };
+  for (const sn of seniors) if (JOURS_DEMO[sn.id]) sn.portage = { jours: JOURS_DEMO[sn.id], precision: '' };
+  const par = 'Démonstration', le = new Date().toISOString(), avant = { type: 'debut', date: `${ANNEE_REFERENCE_PORTAGE - 1}-12-31`, avant: true, par, le };
+  const pg = (id, ...evts) => evts.reduce((d, e) => avecEvenementPortage(d, { par, le, ...e }), { id, ...copiePortage(seniors.find(x => x.id === id)), historique: [] });
+  const portage = [
+    pg('s2', avant),
+    pg('s5', avant, { type: 'interruption', date: plusJours(-20), reprise: plusJours(-5), motif: 'Absence temporaire (vacances ou autre)', precision: 'Absente quinze jours' }),
+    pg('s8', avant, { type: 'interruption', date: plusJours(-3), reprise: plusJours(10), motif: 'Changement de rythme de livraison', precision: '' }),
+    pg('s12', { type: 'debut', date: plusJours(-120) }, { type: 'arret', date: plusJours(-30), motif: 'Changement de lieu de vie', precision: '' }),
+    pg('s14', { type: 'debut', date: plusJours(-60) })
+  ];
+  const portageEchanges = [
+    { id: 'pe-1', type: 'commande', date: plusJours(-9), prestataire: 'Traiteur (démonstration)', objet: 'Repas supplémentaires pour le banquet', resume: 'Dix repas de plus le jour du banquet.', suite: 'Confirmer le nombre définitif', suiteDate: plusJours(3), suiteFaite: false, suiteAFaire: true, statut: 'ouvert', par },
+    { id: 'pe-2', type: 'livraison', date: plusJours(-40), prestataire: 'Traiteur (démonstration)', objet: 'Livraison en retard le jeudi', resume: 'Retard d\'une heure, excuses reçues.', suite: '', suiteDate: '', suiteFaite: false, suiteAFaire: false, statut: 'clos', par }
+  ];
+  const parametres = [{ id: 'portage', initialise: le }];
+  return { seniors, activites, inscriptions, seances, fiches, taches, contacts, echanges, conventions, materiel, emprunts, mouvements, portage, portageEchanges, parametres };
 }

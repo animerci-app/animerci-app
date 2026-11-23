@@ -27,6 +27,11 @@ export const DEFAUTS = {
     reunionMensuelle: 'Réunion mensuelle de l\'équipe de la résidence',
     alerteJours: 30
   },
+  // Portage de repas (lot B) : nom de l'entreprise de restauration (jamais dans le code) et motifs d'organisation proposés pour une interruption ou un arrêt. Aucun motif de santé.
+  portage: {
+    prestataire: '',
+    motifs: ['Absence temporaire (vacances ou autre)', 'Changement de rythme de livraison', 'Demande de la personne ou de ses proches', 'Changement de lieu de vie', 'Fin du service à l\'initiative de la personne', 'Fin du service à l\'initiative du service', 'Autre motif d\'organisation']
+  },
   // Matériel (lot A) : listes de choix, unités, délai d'alerte de péremption. Les « états » (bon, usé, à réparer, manquant, hors d'usage) sont fixes : les alertes en dépendent.
   materiel: {
     categories: ['Vaisselle', 'Assiettes', 'Verres', 'Tasses', 'Bols', 'Couverts', 'Plateaux', 'Nappes', 'Décorations', 'Matériel créatif', 'Matériel de loisirs', 'Équipements'],
@@ -43,7 +48,7 @@ export const DEFAUTS = {
   verification: { mois: 12 },
   securite: { joursCorbeille: 30, joursJournal: 365, rappelSauvegardeJours: 30, motDePasseMin: 12, horizonEmargementJours: 14 },
   // Modules facultatifs (le planning, les activités et les personnes sont toujours actifs)
-  modules: { taches: true, bilans: true }
+  modules: { taches: true, bilans: true, portage: true }
 };
 // Bornes acceptées pour les nombres (une valeur hors bornes est ignorée au profit de la valeur par défaut)
 const BORNES = { 'adhesion.montantDefaut': [0, 1000], 'adhesion.relanceMois': [1, 12], 'verification.mois': [1, 36], 'securite.joursCorbeille': [1, 365], 'securite.joursJournal': [30, 1095], 'securite.rappelSauvegardeJours': [1, 365], 'securite.motDePasseMin': [8, 64], 'securite.horizonEmargementJours': [1, 90], 'partenaires.alerteJours': [1, 365], 'materiel.alertePeremptionJours': [1, 365] };
@@ -87,6 +92,9 @@ export function parametres() {
     ${liste('p-pty', 'partenaires.types', 'Types de partenariat', 'Une par ligne.')}
     <div class="two"><div class="field"><label for="p-reu">Nom de la réunion mensuelle de l'équipe</label><input id="p-reu" value="${esc(P('partenaires.reunionMensuelle'))}"><small class="sub">Utilisé par « Planifier la série mensuelle » (écran Partenaires › Réunions).</small></div>
     ${num('p-pal', 'partenaires.alerteJours', 'Alerte « convention » avant l\'échéance (jours)')}</div></div>
+  <div class="card" style="margin-bottom:14px"><h2 style="margin-top:0">Portage de repas</h2>
+    <div class="field"><label for="p-pgp">Entreprise de restauration (prestataire)</label><input id="p-pgp" value="${esc(P('portage.prestataire'))}" placeholder="nom de l'entreprise qui livre les repas"><small class="sub">Proposé automatiquement dans les échanges avec le prestataire (Portage › Échanges). Il peut être corrigé échange par échange.</small></div>
+    ${liste('p-pgm', 'portage.motifs', 'Motifs d\'interruption ou d\'arrêt', '<b>Une par ligne.</b> <b>✔ À mettre</b> : des motifs d\'organisation (« absence temporaire », « changement de rythme de livraison », « demande de la personne »). <b>✘ À ne pas mettre</b> : tout motif de santé (hospitalisation, maladie, décès…). L\'outil organise le service, il ne suit pas les soins.')}</div>
   <div class="card" style="margin-bottom:14px"><h2 style="margin-top:0">Matériel et réserves</h2>
     ${liste('p-mca', 'materiel.categories', 'Catégories du matériel (inventaire)', 'Une par ligne. Les articles déjà créés gardent leur catégorie.')}
     ${liste('p-mcr', 'materiel.categoriesReserves', 'Catégories des réserves', 'Une par ligne (café, thé, boissons, fournitures…).')}
@@ -108,6 +116,7 @@ export function parametres() {
   <div class="card" style="margin-bottom:14px"><h2 style="margin-top:0">Modules</h2>
     <label class="chk" style="margin:4px 0"><input type="checkbox" id="p-m-taches" ${moduleActif('taches') ? 'checked' : ''}> Tâches et rappels</label>
     <label class="chk" style="margin:4px 0"><input type="checkbox" id="p-m-bilans" ${moduleActif('bilans') ? 'checked' : ''}> Bilans et statistiques</label>
+    <label class="chk" style="margin:4px 0"><input type="checkbox" id="p-m-portage" ${moduleActif('portage') ? 'checked' : ''}> Portage de repas (accessible à l'administratrice et à l'équipe)</label>
     <p class="sub" style="margin:6px 0 0">Un module désactivé disparaît du menu ; ses données restent conservées.</p></div>
   <div class="quick"><button class="btn" data-action="param-save">Enregistrer les paramètres</button><button class="btn ghost" data-action="param-reset">Revenir aux valeurs d'origine</button></div>`;
 }
@@ -116,8 +125,8 @@ export const actions = {
   'param-save': async () => {
     if (!peutAdmin()) return;
     const cats = lignes('#p-cats'), bud = lignes('#p-bud'), mob = lignes('#p-mob'), ann = lignes('#p-ann'), psv = lignes('#p-psv'), pty = lignes('#p-pty');
-    const mdr = lignes('#p-mdr'), mca = lignes('#p-mca'), mcr = lignes('#p-mcr'), mem = lignes('#p-mem'), msa = lignes('#p-msa'), mun = lignes('#p-mun');
-    if (!cats.length || !bud.length || !mob.length || !ann.length || !psv.length || !pty.length || !mca.length || !mcr.length || !mem.length || !msa.length || !mun.length || !mdr.length) return toast('Chaque liste doit contenir au moins un choix.');
+    const mdr = lignes('#p-mdr'), mca = lignes('#p-mca'), mcr = lignes('#p-mcr'), mem = lignes('#p-mem'), msa = lignes('#p-msa'), mun = lignes('#p-mun'), pgm = lignes('#p-pgm');
+    if (!cats.length || !bud.length || !mob.length || !ann.length || !psv.length || !pty.length || !mca.length || !mcr.length || !mem.length || !msa.length || !mun.length || !mdr.length || !pgm.length) return toast('Chaque liste doit contenir au moins un choix.');
     await sauver('parametres', {
       id: 'general', nomOutil: $('#p-nom').value.trim() || DEFAUTS.nomOutil, nomService: $('#p-svc').value.trim() || DEFAUTS.nomService,
       affiche: { lieu: $('#p-aff-l').value.trim(), pied: $('#p-aff-p').value.trim() || DEFAUTS.affiche.pied },
@@ -127,9 +136,10 @@ export const actions = {
       adhesion: { montantDefaut: val('#p-cot', 'adhesion.montantDefaut'), relanceMois: val('#p-rel', 'adhesion.relanceMois'), modes: mdr },
       verification: { mois: val('#p-ver', 'verification.mois') },
       partenaires: { services: psv, types: pty, reunionMensuelle: $('#p-reu').value.trim() || DEFAUTS.partenaires.reunionMensuelle, alerteJours: val('#p-pal', 'partenaires.alerteJours') },
+      portage: { prestataire: $('#p-pgp').value.trim(), motifs: pgm },
       materiel: { categories: mca, categoriesReserves: mcr, emplacements: mem, saisons: msa, unites: mun, alertePeremptionJours: val('#p-mpe', 'materiel.alertePeremptionJours') },
       securite: { motDePasseMin: val('#p-pw', 'securite.motDePasseMin'), joursCorbeille: val('#p-corb', 'securite.joursCorbeille'), joursJournal: val('#p-jour', 'securite.joursJournal'), rappelSauvegardeJours: val('#p-rap', 'securite.rappelSauvegardeJours'), horizonEmargementJours: val('#p-hor', 'securite.horizonEmargementJours') },
-      modules: { taches: $('#p-m-taches').checked, bilans: $('#p-m-bilans').checked }
+      modules: { taches: $('#p-m-taches').checked, bilans: $('#p-m-bilans').checked, portage: $('#p-m-portage').checked }
     }, 'Paramètres enregistrés');
     render();
   },
