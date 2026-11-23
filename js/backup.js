@@ -4,7 +4,7 @@
 // l'information est toujours écrite en toutes lettres (« Oui », « Présent·e »…), jamais portée par une couleur.
 import { store, lecturesDuJour, MODE_REEL } from './store.js';
 import { S, $, esc, toast, patienter, confirmer, aujourdhui } from './ui.js';
-import { STATUTS_PRESENCE, lieuDeVie, libelleFrequence } from './logic.js';
+import { STATUTS_PRESENCE, lieuDeVie, libelleFrequence, TYPES_ECHANGE, STATUTS_CONVENTION } from './logic.js';
 import { VERSION } from './version.js';
 import { P } from './parametres.js';
 
@@ -19,7 +19,7 @@ const fr = d => (d && /^\d{4}-\d{2}-\d{2}/.test(d) ? d.slice(8, 10) + '/' + d.sl
 // Données complètes pour une sauvegarde : lues directement dans la base (l'écran, lui, ne charge que ce qu'il affiche).
 let SAUV = null;
 async function lireTout() {
-  const T = {}, cols = ['seniors', 'activites', 'inscriptions', 'seances', 'fiches', 'taches', 'contacts', 'users', 'parametres'];
+  const T = {}, cols = ['seniors', 'activites', 'inscriptions', 'seances', 'fiches', 'taches', 'contacts', 'echanges', 'conventions', 'users', 'parametres'];
   for (const c of cols) T[c] = await store.lire(c);
   T.corbeille = []; T.journal = [];
   return T;
@@ -45,8 +45,14 @@ export function tableaux({ fiches = false } = {}) {
     cols: ['Activité', 'Type', 'Catégorie', 'Date', 'Jour et horaire', 'Fréquence', 'Lieu', 'Places', 'Intervenant·e', 'Partenaire', 'Bénévole référent·e', 'Budget'],
     rows: [...C.activites].sort((a, b) => (a.date || '').localeCompare(b.date || '')).map(a => [a.nom, TYPES[a.type] || a.type, a.cat, fr(a.date), a.jour, a.frequence, a.lieu, a.cap, a.interv, a.partenaire, a.benevole, a.budget]) });
   T.push({ nom: 'Annuaire', titre: 'Annuaire : intervenants, partenaires, bénévoles, collègues',
-    cols: ['Nom', 'Précision', 'Catégorie', 'Téléphone', 'E-mail', 'Remarque'],
-    rows: [...(C.contacts || [])].sort((a, b) => ((a.categorie || '') + a.nom).localeCompare((b.categorie || '') + b.nom, 'fr')).map(c => [c.nom, c.precision, c.categorie, c.tel, c.email, c.note]) });
+    cols: ['Nom', 'Précision', 'Catégorie', 'Téléphone', 'E-mail', 'Remarque', 'Service ou structure', 'Type de partenariat', 'Référent', 'Projets communs', 'Suite à donner'],
+    rows: [...(C.contacts || [])].sort((a, b) => ((a.categorie || '') + a.nom).localeCompare((b.categorie || '') + b.nom, 'fr')).map(c => [c.nom, c.precision, c.categorie, c.tel, c.email, c.note, c.service, c.partenariat, c.referent, c.projets, c.suite]) });
+  T.push({ nom: 'Échanges partenaires', titre: 'Échanges avec les partenaires (appels, courriels, réunions, contacts, invitations, relances)',
+    cols: ['Date', 'Heure', 'Type', 'Partenaire', 'Service', 'Prévu', 'Objet', 'Résumé', 'Participants', 'Ordre du jour', 'Décisions', 'Suite à donner', 'Pour le', 'Suite faite', 'Saisi par'],
+    rows: [...(C.echanges || [])].sort((a, b) => (a.date || '').localeCompare(b.date || '')).map(e => [fr(e.date), e.heure, TYPES_ECHANGE[e.type] || e.type, e.interne ? 'Équipe de la résidence (interne)' : e.partenaire, e.service, e.etat === 'prevu' ? 'Oui' : 'Non', e.objet, e.resume, e.participants, e.odj, e.decisions, e.suite, fr(e.suiteDate), e.suite ? oui(e.suiteFaite) : '', e.par]) });
+  T.push({ nom: 'Conventions', titre: 'Conventions avec les partenaires',
+    cols: ['Partenaire', 'Intitulé', 'État', 'Signature', 'Échéance', 'Où se trouve le document', 'Remarque'],
+    rows: [...(C.conventions || [])].sort((a, b) => (a.echeance || '9999').localeCompare(b.echeance || '9999')).map(k => [k.partenaire, k.intitule, STATUTS_CONVENTION[k.statut] || k.statut, fr(k.signature), fr(k.echeance), k.emplacement, k.note]) });
   T.push({ nom: 'Inscriptions', titre: 'Inscriptions et listes d\'attente',
     cols: ['Activité', 'Personne', 'Situation', 'Date de la demande', 'Origine'],
     rows: [...C.inscriptions].sort((a, b) => (nomAct(a.activiteId) + nomSen(a.seniorId)).localeCompare(nomAct(b.activiteId) + nomSen(b.seniorId), 'fr'))
@@ -143,7 +149,7 @@ export function imprimer(html) {
 /* ---------- Fichier complet de restauration (JSON) ---------- */
 const COLS_SAUVEES = ['seniors', 'activites', 'inscriptions', 'seances', 'fiches', 'taches'];
 export function exportJson() {
-  return JSON.stringify({ application: 'animerci', version: 1, versionOutil: VERSION, date: new Date().toISOString(), donnees: Object.fromEntries(COLS_SAUVEES.map(c => [c, (SAUV || S.cache)[c]])), equipe: (SAUV || S.cache).users, parametres: (SAUV || S.cache).parametres, contacts: (SAUV || S.cache).contacts }, null, 1);
+  return JSON.stringify({ application: 'animerci', version: 1, versionOutil: VERSION, date: new Date().toISOString(), donnees: Object.fromEntries(COLS_SAUVEES.map(c => [c, (SAUV || S.cache)[c]])), equipe: (SAUV || S.cache).users, parametres: (SAUV || S.cache).parametres, contacts: (SAUV || S.cache).contacts, echanges: (SAUV || S.cache).echanges || [], conventions: (SAUV || S.cache).conventions || [] }, null, 1);
 }
 export function lireSauvegarde(texte) {
   let d; try { d = JSON.parse(texte); } catch (e) { throw new Error('Ce fichier n\'est pas une sauvegarde valide (illisible).'); }
@@ -156,6 +162,9 @@ export function lireSauvegarde(texte) {
   }
   out.parametres = Array.isArray(d.parametres) ? d.parametres.filter(r => r && r.id) : [];
   out.contacts = Array.isArray(d.contacts) ? d.contacts.filter(r => r && r.id && !/[\/]/.test(String(r.id))) : []; // facultatif : absent des sauvegardes d'avant la 1.4.0
+  // facultatifs : absents des sauvegardes d'avant la 1.16.0
+  out.echanges = Array.isArray(d.echanges) ? d.echanges.filter(r => r && r.id && !/[\/]/.test(String(r.id))) : [];
+  out.conventions = Array.isArray(d.conventions) ? d.conventions.filter(r => r && r.id && !/[\/]/.test(String(r.id))) : [];
   return { donnees: out, date: d.date };
 }
 
@@ -179,7 +188,7 @@ function opts() { return { fiches: !!($('#sv-fiches') && $('#sv-fiches').checked
 function entete(o) {
   const n = SAUV || S.cache;
   return [`Sauvegarde faite le ${fr(aujourdhui())} par ${S.user.nom} (AniMerci, version ${VERSION}).`,
-    `Contenu : ${n.seniors.length} personnes, ${n.activites.length} activités, ${n.inscriptions.length} inscriptions, ${n.seances.length} séances${o.fiches ? `, ${n.fiches.length} fiches de sortie` : ' (fiches de sortie non incluses)'}, ${n.taches.length} tâches.`,
+    `Contenu : ${n.seniors.length} personnes, ${n.activites.length} activités, ${n.inscriptions.length} inscriptions, ${n.seances.length} séances${o.fiches ? `, ${n.fiches.length} fiches de sortie` : ' (fiches de sortie non incluses)'}, ${n.taches.length} tâches, ${(n.echanges || []).length} échanges avec les partenaires, ${(n.conventions || []).length} conventions.`,
     'Lecture : chaque onglet ou chaque tableau est une liste. Les mots sont écrits en toutes lettres (Oui, Non, Présent·e, Absent·e…) : le document se lit aussi bien en noir et blanc.',
     'ATTENTION : ce fichier contient des données personnelles. Le ranger dans un endroit fermé à clé ou protégé par mot de passe ; ne pas l\'envoyer par e-mail ordinaire ni le déposer sur GitHub.',
     'Pour restaurer l\'outil : utiliser le fichier « .json » de la même date (écran Sauvegarde > Restaurer).'];
@@ -223,11 +232,11 @@ export function brancher() {
     const fic = f.files[0]; if (!fic) return;
     try {
       const { donnees, date } = lireSauvegarde(await fic.text());
-      const total = COLS_SAUVEES.concat('parametres', 'contacts').reduce((n, c) => n + donnees[c].length, 0);
+      const total = COLS_SAUVEES.concat('parametres', 'contacts', 'echanges', 'conventions').reduce((n, c) => n + donnees[c].length, 0);
       const resume = COLS_SAUVEES.map(c => `${donnees[c].length} ${c}`).join(', ');
       confirmer('Restaurer cette sauvegarde ?', `Sauvegarde du ${date ? fr(date.slice(0, 10)) : '?'} : ${resume}. ${total > 15000 ? 'Attention : volume supérieur au quota quotidien gratuit d\'écritures.' : ''} Les données seront ajoutées ou remises à jour, sans rien supprimer.`, 'Restaurer', async () => {
         let n = 0;
-        for (const c of COLS_SAUVEES.concat('parametres', 'contacts')) for (const r of donnees[c]) { await store.save(c, r); if (++n % 50 === 0) toast(`Restauration… ${n}/${total}`); }
+        for (const c of COLS_SAUVEES.concat('parametres', 'contacts', 'echanges', 'conventions')) for (const r of donnees[c]) { await store.save(c, r); if (++n % 50 === 0) toast(`Restauration… ${n}/${total}`); }
         toast(`Restauration terminée : ${total} éléments`);
       });
     } catch (e) { toast(e.message); }

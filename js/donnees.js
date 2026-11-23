@@ -8,7 +8,7 @@ export function bornesMois(a, m) {
   return [`${a}-${p(m + 1)}-01`, `${a}-${p(m + 1)}-${p(new Date(a, m + 1, 0).getDate())}`];
 }
 
-// c : { nbMois (planning : 1 à 3), horizonSorties (date limite pour l'alerte « fiches de sortie à compléter »), role, view, actId, mois:{a,m}, stat:{du,au}, onglet, auj, activites:[], mesActivites:[] }
+// c : { anPart (année affichée dans Partenaires), partId (fiche d'un partenaire ouverte), nbMois (planning : 1 à 3), horizonSorties (date limite pour l'alerte « fiches de sortie à compléter »), role, view, actId, mois:{a,m}, stat:{du,au}, onglet, auj, activites:[], mesActivites:[] }
 export function besoins(c) {
   const B = [];
   const add = (col, key, filtre, opts) => B.push({ col, key, filtre: filtre || null, opts: opts || null });
@@ -20,6 +20,8 @@ export function besoins(c) {
     for (const id of c.mesActivites || []) { add('inscriptions', id, ['activiteId', '==', id]); add('seances', id, ['activiteId', '==', id]); }
     return B;
   }
+  // Partenaire (accès ouvert par l'administratrice, par exemple pour un essai) : uniquement ses propres échanges
+  if (c.role === 'partenaire') { if (c.uid) add('echanges', 'mes', ['parUid', '==', c.uid]); return B; }
   if (c.role !== 'admin') return B;
   add('activites', 'all'); add('taches', 'all');
   const v = c.view;
@@ -28,6 +30,8 @@ export function besoins(c) {
   if (v === 'home') {
     add('inscriptions', 'attente', ['statut', '==', 'attente']);
     add('seances', 'avalider', ['valide', '==', false]);
+    // Alertes « partenaires » : suites à donner, réunions prévues, conventions (petites listes)
+    add('echanges', 'suites', ['suiteAFaire', '==', true]); add('echanges', 'prevus', ['etat', '==', 'prevu']); add('conventions', 'all');
     for (const a of c.activites || []) if (a.type === 'sortie' && a.date && a.date >= c.auj && a.date <= c.horizonSorties) { add('inscriptions', a.id, ['activiteId', '==', a.id]); add('fiches', a.id, ['activiteId', '==', a.id]); }
   }
   if (v === 'seniors' || v === 'bilans' || v === 'activite') add('seniors', 'all');
@@ -41,7 +45,13 @@ export function besoins(c) {
     const an = c.auj.slice(0, 4), du = (c.stat && c.stat.du) || `${an}-01-01`, au = (c.stat && c.stat.au) || `${an}-12-31`;
     add('seances', `bilan-${du}-${au}`, [['date', '>=', du], ['date', '<=', au]]);
   }
-  if (v === 'equipe') add('users', 'all');
+  if (v === 'equipe') { add('users', 'all'); add('contacts', 'all'); }
+  // Partenaires : l'annuaire, les conventions et les échanges de l'année affichée (+ ceux d'un partenaire si sa fiche est ouverte)
+  if (v === 'partenaires') {
+    const an = c.anPart || c.auj.slice(0, 4);
+    add('contacts', 'all'); add('conventions', 'all'); add('echanges', `an-${an}`, [['date', '>=', `${an}-01-01`], ['date', '<=', `${an}-12-31`]]);
+    if (c.partId) add('echanges', `p-${c.partId}`, ['partenaireId', '==', c.partId]);
+  }
   // Annuaire : petite liste, chargée seulement là où elle sert (écran Annuaire, formulaires d'activité et de tâche)
   if (['annuaire', 'activites', 'activite', 'taches'].includes(v)) add('contacts', 'all');
   if (v === 'sauvegarde') {

@@ -8,14 +8,14 @@ import { fusionForm } from './fusion.js';
 import { store } from './store.js';
 import { S, pret, chargement, $, esc, aujourdhui, ajouterJours, initiales, dateLongue, JOURS, MOIS, go, render, toast, modal, closeModal, confirmer, telecharger, copier, sauver, mettreCorbeille, seniorDe, actDe, validees } from './ui.js';
 
-const CATS_TACHE = ['Événements', 'Communication', 'Régie', 'Bénévoles', 'Adhésions', 'Jeunes', 'Administratif', 'Autre'];
+const CATS_TACHE = ['Événements', 'Communication', 'Régie', 'Bénévoles', 'Adhésions', 'Jeunes', 'Partenaires', 'Administratif', 'Autre'];
 
 /* ============ ACCUEIL ============ */
 // Alertes calculées sur les données déjà chargées (aucune lecture en plus) : tâches en retard ou prioritaires, places en attente, appels à valider
 function alertesCard() {
-  const al = L.alertesAccueil({ activites: S.cache.activites, inscriptions: S.cache.inscriptions, seances: S.cache.seances, taches: S.cache.taches, auj: aujourdhui() });
+  const al = L.alertesAccueil({ activites: S.cache.activites, inscriptions: S.cache.inscriptions, seances: S.cache.seances, taches: S.cache.taches, auj: aujourdhui(), echanges: S.cache.echanges, conventions: S.cache.conventions, joursConv: P('partenaires.alerteJours') });
   const lib = { crit: ['p-crit', 'Urgent'], warn: ['p-warn', 'À regarder'], info: ['p-bleu', 'À faire'] };
-  return `<div class="card alertes" style="margin-top:16px"><h2>Alertes</h2>${al.length ? al.map(a => `<button class="row" style="width:100%;background:none;border:0;border-top:1px solid var(--ligne);text-align:left" data-action="${a.act ? 'open-act' : 'nav'}" ${a.act ? `data-id="${a.act}"` : `data-v="${a.vue}"`}>
+  return `<div class="card alertes" style="margin-top:16px"><h2>Alertes</h2>${al.length ? al.map(a => `<button class="row" style="width:100%;background:none;border:0;border-top:1px solid var(--ligne);text-align:left" data-action="${a.act ? 'open-act' : 'nav'}" ${a.act ? `data-id="${a.act}"` : `data-v="${a.vue}"${a.tab ? ` data-tab="${a.tab}"` : ''}`}>
     <span class="pill ${lib[a.niveau][0]}">${lib[a.niveau][1]}</span><div class="grow">${esc(a.texte)}</div></button>`).join('') : '<div class="empty"><b>Aucune alerte</b>Tout est à jour.</div>'}</div>`;
 }
 export function accueil() {
@@ -331,7 +331,7 @@ function exportBilan() {
 
 /* ============ ACTIONS ============ */
 export const actions = {
-  nav: el => go(el.dataset.v),
+  nav: el => { if (el.dataset.tab) S.ongletPart = el.dataset.tab; go(el.dataset.v); },
   'senior-form': el => seniorForm(el.dataset.id),
   'export-seniors': () => exportSeniors(),
   'filtre-statut': el => { S.filtreStatut = el.dataset.v; render(); },

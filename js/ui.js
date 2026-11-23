@@ -4,7 +4,7 @@ import { uid } from './logic.js';
 
 export const S = {
   user: null,
-  cache: { seniors: [], activites: [], inscriptions: [], seances: [], fiches: [], taches: [], contacts: [], users: [], corbeille: [], journal: [], parametres: [] },
+  cache: { seniors: [], activites: [], inscriptions: [], seances: [], fiches: [], taches: [], contacts: [], echanges: [], conventions: [], users: [], corbeille: [], journal: [], parametres: [] },
   view: 'home', actId: null, tab: 'inscriptions',
   rules: { moins: true, abs: true, res: false },
   moisPlan: null, nbMois: 1, appel: null, filtreTache: 'Toutes', filtreStatutTache: 'tous', recherche: '', filtreStatut: 'tous', filtreContact: 'Tous',
@@ -33,7 +33,7 @@ let renderFn = () => {};
 export const setRender = f => { renderFn = f; };
 export const render = () => renderFn();
 export function go(view, opts = {}) {
-  S.navId++; S.view = view; S.actId = opts.actId || null; S.tab = opts.tab || 'inscriptions'; S.appel = null;
+  S.navId++; S.view = view; S.actId = opts.actId || null; S.partId = opts.partId || null; S.tab = opts.tab || 'inscriptions'; S.appel = null;
   render(); window.scrollTo(0, 0);
   const m = $('#main'); if (m) m.focus({ preventScroll: true });
 }
@@ -84,7 +84,7 @@ export function sauver(col, doc, msg) {
 }
 
 /* ---- Journal des modifications et corbeille (30 jours) ---- */
-export const TYPES_OBJET = { seniors: 'Personne', activites: 'Activité', taches: 'Tâche', inscriptions: 'Inscription', seances: 'Appel', fiches: 'Fiche de sortie', users: 'Accès équipe', parametres: 'Paramètres', contacts: 'Contact' };
+export const TYPES_OBJET = { seniors: 'Personne', activites: 'Activité', taches: 'Tâche', inscriptions: 'Inscription', seances: 'Appel', fiches: 'Fiche de sortie', users: 'Accès équipe', parametres: 'Paramètres', contacts: 'Contact', echanges: 'Échange avec un partenaire', conventions: 'Convention' };
 export function etiquette(col, d) {
   const act = id => (S.cache.activites.find(a => a.id === id) || {}).nom || '';
   if (col === 'seniors') return `${d.prenom || ''} ${d.nom || ''}`.trim();
@@ -96,6 +96,8 @@ export function etiquette(col, d) {
   if (col === 'users') return d.nom || d.email || '';
   if (col === 'parametres') return 'Paramètres généraux';
   if (col === 'contacts') return `${d.nom || ''}${d.precision ? ' · ' + d.precision : ''}${d.categorie ? ' (' + d.categorie + ')' : ''}`;
+  if (col === 'echanges') return `${d.objet || ''} — ${d.interne ? 'équipe de la résidence' : d.partenaire || ''}${d.date ? ' (' + d.date + ')' : ''}`;
+  if (col === 'conventions') return `${d.intitule || ''} — ${d.partenaire || ''}`;
   return '';
 }
 export async function journaliser(action, col, d) {

@@ -14,7 +14,10 @@
     const sienne = id => r === 'intervenant' && acts(uid).includes(id);
     switch (col) {
       case 'users': return op === 'read' ? (uid === data.__id || admin) : (admin && uid !== data.__id);
-      case 'seniors': case 'fiches': case 'taches': case 'corbeille': case 'contacts': return admin;
+      case 'seniors': case 'fiches': case 'taches': case 'corbeille': case 'contacts': case 'conventions': return admin;
+      case 'echanges': {
+        if (admin) return true; const mien = d => r === 'partenaire' && d && d.parUid === uid && d.partenaireId === (F.db.users[uid] || {}).partenaireId && d.interne !== true;
+        if (op === 'read') return r === 'partenaire' && data.parUid === uid; if (op === 'create') return mien(newData); if (op === 'update') return mien(data) && mien(newData); return false; }
       case 'activites': return op === 'read' ? ['admin', 'intervenant', 'benevole'].includes(r) : admin;
       case 'inscriptions': return op === 'read' ? (admin || sienne(data.activiteId)) : admin;
       case 'seances':
@@ -23,8 +26,8 @@
         if (op === 'create') return sienne(newData.activiteId) && newData.valide !== true;
         if (op === 'update') return sienne(data.activiteId) && data.valide !== true && newData.valide !== true && newData.activiteId === data.activiteId;
         return false;
-      case 'parametres': return op === 'read' ? ['admin', 'intervenant', 'benevole'].includes(r) : admin;
-      case 'journal': return op === 'create' ? ['admin', 'intervenant', 'benevole'].includes(r) : (op !== 'update' && admin);
+      case 'parametres': return op === 'read' ? ['admin', 'intervenant', 'benevole', 'partenaire'].includes(r) : admin;
+      case 'journal': return op === 'create' ? ['admin', 'intervenant', 'benevole', 'partenaire'].includes(r) : (op !== 'update' && admin);
       default: return false;
     }
   }
@@ -79,7 +82,9 @@
       const l = { q, ok, ko, uid, vus: null, run() {
         const r = role(uid), docs = Object.entries(rows(q.col)).filter(([, d]) => q.filtres.every(w => passe(d, w)));
         let autorise;
-        if (q.col === 'activites' || q.col === 'parametres') autorise = ['admin', 'intervenant', 'benevole'].includes(r);
+        if (q.col === 'activites') autorise = ['admin', 'intervenant', 'benevole'].includes(r);
+        else if (q.col === 'parametres') autorise = ['admin', 'intervenant', 'benevole', 'partenaire'].includes(r);
+        else if (q.col === 'echanges') autorise = r === 'admin' || (r === 'partenaire' && q.filtres.some(w => w.f === 'parUid' && w.op === '==' && w.v === uid));
         else if (['inscriptions', 'seances'].includes(q.col)) autorise = r === 'admin' || (r === 'intervenant' && q.filtres.some(w => w.f === 'activiteId' && w.op === '==' && acts(uid).includes(w.v)));
         else if (q.col === 'users') autorise = r === 'admin' || (uid && q.filtres.length === 0 && false);
         else autorise = r === 'admin';

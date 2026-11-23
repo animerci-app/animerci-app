@@ -363,7 +363,7 @@ export function programme(activites, du, au) {
   return { mois, regulieres };
 }
 // Alertes de l'accueil, calculées sur les données déjà chargées (aucune lecture en plus)
-export function alertesAccueil({ activites, inscriptions, seances, taches, auj }) {
+export function alertesAccueil({ activites, inscriptions, seances, taches, auj, echanges = [], conventions = [], joursConv = 30 }) {
   const A = [], nomAct = id => (activites.find(a => a.id === id) || {}).nom;
   const ouvertes = taches.filter(t => !t.done);
   const retard = ouvertes.filter(t => t.echeance && t.echeance < auj).sort((x, y) => x.echeance.localeCompare(y.echeance));
@@ -374,5 +374,74 @@ export function alertesAccueil({ activites, inscriptions, seances, taches, auj }
   for (const [id, n] of Object.entries(att)) if (nomAct(id)) A.push({ niveau: 'warn', texte: `${n} personne${n > 1 ? 's' : ''} en attente d'une place : ${nomAct(id)}`, act: id });
   const val = {}; for (const s of seances) if (!s.valide) val[s.activiteId] = (val[s.activiteId] || 0) + 1;
   for (const [id, n] of Object.entries(val)) if (nomAct(id)) A.push({ niveau: 'info', texte: `${n} appel${n > 1 ? 's' : ''} à valider : ${nomAct(id)}`, act: id });
+  A.push(...alertesPartenaires({ echanges, conventions, auj, joursConv }));
   return A;
+}
+
+/* ---------- Lot C (v1.16.0) : partenaires — échanges, réunions, conventions, comptage annuel ---------- */
+// Les échanges sont saisis par l'administratrice seule : les partenaires n'ont pas besoin de compte. Chaque échange est rattaché à un partenaire de l'Annuaire
+// (ou, pour les réunions de l'équipe de la résidence, marqué « interne »), ce qui permet les bilans et statistiques de fin d'année.
+export const TYPES_ECHANGE = { 'appel-entrant': 'Appel entrant', 'appel-sortant': 'Appel sortant', courriel: 'Courriel', reunion: 'Réunion', contact: 'Contact physique', invitation: 'Invitation', relance: 'Relance' };
+export const STATUTS_CONVENTION = { 'a-preparer': 'À préparer', envoyee: 'Envoyée', signee: 'Signée', 'a-renouveler': 'À renouveler', terminee: 'Terminée' };
+const plusJ = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+/** Message d'erreur (ou '' si tout va bien) pour un échange à enregistrer. */
+export function erreurEchange({ date, objet, type, interne, partenaire }) {
+  if (!TYPES_ECHANGE[type]) return 'Choisissez le type d\'échange.';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) return 'Indiquez la date.';
+  if (interne && type !== 'reunion') return 'Seule une réunion peut être « interne » (équipe de la résidence).';
+  if (!interne && !String(partenaire || '').trim()) return 'Choisissez le partenaire concerné : chaque échange doit être rattaché à un partenaire.';
+  if (!String(objet || '').trim()) return 'Donnez un objet à l\'échange.';
+  return '';
+}
+/** Service d'un échange : celui de la fiche du partenaire (à jour), sinon celui noté à l'enregistrement ; « interne » pour l'équipe de la résidence. */
+export function serviceEchange(e, parId, interne) { const c = parId && parId[e.partenaireId]; return (e.interne ? interne : c ? c.service : e.service) || ''; }
+/**
+ * Comptage annuel des échanges (cahier 15.4). Seuls les échanges tenus comptent (les réunions « prévues » ne sont pas comptées avant d'être confirmées).
+ * Distingue le nombre d'échanges et le nombre de partenaires distincts. Filtrable par service ou partenaire.
+ */
+export function comptageEchanges(echanges, contacts, { an, service = '', partenaireId = '', interne = 'Équipe de la résidence' } = {}) {
+  const parId = Object.fromEntries((contacts || []).map(c => [c.id, c]));
+  const types = Object.keys(TYPES_ECHANGE), zero = () => Object.fromEntries(types.map(k => [k, 0]));
+  const rows = echanges.filter(e => e.etat !== 'prevu' && e.date && e.date.slice(0, 4) === String(an))
+    .map(e => ({ ...e, _service: serviceEchange(e, parId, interne), _part: e.interne ? interne : (e.partenaire || '') }))
+    .filter(e => (!service || e._service === service) && (!partenaireId || e.partenaireId === partenaireId));
+  const parType = zero(), parMois = Array.from({ length: 12 }, zero), parService = {}, parPartenaire = {};
+  for (const e of rows) {
+    if (!(e.type in parType)) continue;
+    parType[e.type]++; parMois[Number(e.date.slice(5, 7)) - 1][e.type]++;
+    const sv = e._service || '(sans service)'; (parService[sv] = parService[sv] || { nom: sv, n: 0, ...zero() }); parService[sv].n++; parService[sv][e.type]++;
+    const cle = e.interne ? 'interne' : (e.partenaireId || 'x:' + e._part);
+    (parPartenaire[cle] = parPartenaire[cle] || { cle, nom: e._part || '(partenaire supprimé)', service: e._service, n: 0, ...zero() }); parPartenaire[cle].n++; parPartenaire[cle][e.type]++;
+  }
+  const total = rows.filter(e => e.type in parType).length;
+  const tri = (a, b) => b.n - a.n || String(a.nom).localeCompare(String(b.nom), 'fr');
+  return { total, parType, parMois, parService: Object.values(parService).sort(tri), parPartenaire: Object.values(parPartenaire).sort(tri), partenairesDistincts: Object.keys(parPartenaire).length, lignes: rows.sort((a, b) => a.date.localeCompare(b.date)) };
+}
+/** Dates d'une série mensuelle : même quantième chaque mois (le 31 donne le dernier jour des mois plus courts). */
+export function datesSerieMensuelle(debut, nb) {
+  const [y, m, j] = String(debut).split('-').map(Number), out = [];
+  for (let i = 0; i < nb; i++) { const d = new Date(y, m - 1 + i, 1), fin = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate(); out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(Math.min(j, fin)).padStart(2, '0')}`); }
+  return out;
+}
+/** Alertes de l'accueil : suites à donner, conventions proches de leur échéance, échanges prévus dont la date est passée. Aucune lecture en plus (données déjà chargées). */
+export function alertesPartenaires({ echanges = [], conventions = [], auj, joursConv = 30 }) {
+  const A = [], nom = e => e.interne ? 'équipe de la résidence' : (e.partenaire || '?'), liste = (t, f) => t.slice(0, 3).map(f).join(', ') + (t.length > 3 ? '…' : '');
+  const suites = echanges.filter(e => e.suiteAFaire && e.suiteDate);
+  const retard = suites.filter(e => e.suiteDate < auj).sort((a, b) => a.suiteDate.localeCompare(b.suiteDate));
+  if (retard.length) A.push({ niveau: 'crit', texte: `${retard.length} suite${retard.length > 1 ? 's' : ''} à donner en retard (partenaires) : ${liste(retard, nom)}`, vue: 'partenaires', tab: 'echanges' });
+  const proches = suites.filter(e => e.suiteDate >= auj && e.suiteDate <= plusJ(auj, 7)).sort((a, b) => a.suiteDate.localeCompare(b.suiteDate));
+  if (proches.length) A.push({ niveau: 'warn', texte: `${proches.length} suite${proches.length > 1 ? 's' : ''} à donner cette semaine (partenaires) : ${liste(proches, nom)}`, vue: 'partenaires', tab: 'echanges' });
+  const ouvertes = conventions.filter(c => c.echeance && c.statut !== 'terminee');
+  const echues = ouvertes.filter(c => c.echeance < auj), bientot = ouvertes.filter(c => c.echeance >= auj && c.echeance <= plusJ(auj, joursConv));
+  if (echues.length) A.push({ niveau: 'crit', texte: `${echues.length} convention${echues.length > 1 ? 's' : ''} échue${echues.length > 1 ? 's' : ''} : ${liste(echues, c => c.partenaire || c.intitule)}`, vue: 'partenaires', tab: 'conventions' });
+  if (bientot.length) A.push({ niveau: 'warn', texte: `${bientot.length} convention${bientot.length > 1 ? 's' : ''} à renouveler ou à suivre dans les ${joursConv} jours : ${liste(bientot, c => c.partenaire || c.intitule)}`, vue: 'partenaires', tab: 'conventions' });
+  const aConfirmer = echanges.filter(e => e.etat === 'prevu' && e.date && e.date < auj);
+  if (aConfirmer.length) A.push({ niveau: 'info', texte: `${aConfirmer.length} réunion${aConfirmer.length > 1 ? 's' : ''} ou échange${aConfirmer.length > 1 ? 's' : ''} prévu${aConfirmer.length > 1 ? 's' : ''} dont la date est passée : à confirmer comme tenu${aConfirmer.length > 1 ? 's' : ''}`, vue: 'partenaires', tab: 'reunions' });
+  return A;
+}
+/** Message prêt à copier (invitation ou relance) : l'outil n'envoie rien, l'administratrice le colle dans sa messagerie. */
+export function texteMessagePartenaire({ type, referent, objet, quand, signature }) {
+  const debut = referent ? `Bonjour ${referent},` : 'Bonjour,';
+  if (type === 'invitation') return [debut, '', `Nous avons le plaisir de vous inviter${objet ? ' à « ' + objet + ' »' : ''}${quand ? ' (' + quand + ')' : ''}.`, 'Pourriez-vous nous confirmer votre présence ?', '', 'Cordialement,', signature || ''].join('\n');
+  return [debut, '', `Je me permets de revenir vers vous au sujet de « ${objet || 'notre échange précédent'} ».`, 'Pouvez-vous nous indiquer où en est ce dossier ?', '', 'Cordialement,', signature || ''].join('\n');
 }

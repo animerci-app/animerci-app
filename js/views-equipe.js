@@ -1,9 +1,10 @@
 // Écran « Équipe » (administratrice uniquement) : créer des accès, choisir le rôle et les activités.
 import { store, MODE_REEL } from './store.js';
+import * as L from './logic.js';
 import { S, pret, chargement, $, esc, initiales, modal, closeModal, toast, confirmer, sauver } from './ui.js';
 
-const ROLES = { admin: 'Administratrice', intervenant: 'Intervenant·e', benevole: 'Bénévole' };
-const CLS = { admin: 'p-bleu', intervenant: 'p-rose', benevole: 'p-warn' };
+const ROLES = { admin: 'Administratrice', intervenant: 'Intervenant·e', benevole: 'Bénévole', partenaire: 'Partenaire (journal de ses échanges)' };
+const CLS = { admin: 'p-bleu', intervenant: 'p-rose', benevole: 'p-warn', partenaire: 'p-ok' };
 
 export function equipe() {
   if (!pret('users')) return chargement('Équipe');
@@ -34,26 +35,31 @@ function formulaire(id) {
     <div class="field"><label for="e3">Rôle</label><select id="e3" ${moi ? 'disabled' : ''}>${Object.entries(ROLES).map(([k, l]) => `<option value="${k}" ${u.role === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
     <div id="blocActs" class="field"><label>Activités accessibles</label>
       ${acts.length ? acts.map(a => `<label class="chk" style="margin:4px 0"><input type="checkbox" class="eact" value="${esc(a.id)}" ${(u.activites || []).includes(a.id) ? 'checked' : ''}> ${esc(a.nom)}</label>`).join('') : '<p class="sub">Aucune activité pour le moment : créez-les d\'abord dans « Activités ».</p>'}</div>
+    <div id="blocPart" class="field"><label for="e4">Partenaire concerné <small class="sub">(fiche de l'Annuaire)</small></label><select id="e4"><option value="">(choisir)</option>${[...S.cache.contacts].map(c => L.normContact(c)).sort(L.comparerPatronyme).map(c => `<option value="${esc(c.id)}" ${u.partenaireId === c.id ? 'selected' : ''}>${esc(L.libelleContact(c))}${c.categorie ? ' (' + esc(c.categorie) + ')' : ''}</option>`).join('')}</select>
+      <p class="sub" style="margin:4px 0 0">Ce compte voit uniquement un écran « Mes échanges » : il saisit et relit ses propres échanges avec le service. Il ne voit ni les personnes, ni l'Annuaire, ni les activités. Retirez l'accès quand l'essai est terminé.</p></div>
     ${id ? '' : `<p class="sub">${MODE_REEL ? 'Un e-mail est envoyé à cette adresse pour que la personne choisisse son mot de passe.' : 'Mode démonstration : aucun e-mail n\'est envoyé.'}</p>`}
     ${moi ? '<p class="sub">Vous ne pouvez pas modifier votre propre rôle (protection contre le verrouillage).</p>' : ''}
     <div class="quick" style="margin-top:14px"><button class="btn" id="saveEq">Enregistrer</button><button class="btn ghost" data-action="close">Annuler</button>
     ${id && !moi ? `<button class="btn ghost" id="mdpEq" style="margin-left:auto">Renvoyer le lien de mot de passe</button><button class="btn ghost" id="delEq">Retirer l'accès</button>` : ''}</div>`);
-  const maj = () => { $('#blocActs').style.display = $('#e3').value === 'intervenant' ? 'block' : 'none'; };
+  const maj = () => { $('#blocActs').style.display = $('#e3').value === 'intervenant' ? 'block' : 'none'; $('#blocPart').style.display = $('#e3').value === 'partenaire' ? 'block' : 'none'; };
   $('#e3').onchange = maj; maj();
   $('#saveEq').onclick = async () => {
     const nom = $('#e1').value.trim(); if (!nom) return toast('Indiquez un nom.');
     const role = moi ? 'admin' : $('#e3').value;
     const activites = role === 'intervenant' ? [...document.querySelectorAll('.eact:checked')].map(c => c.value) : [];
+    const partenaireId = role === 'partenaire' ? $('#e4').value : '';
+    if (role === 'partenaire' && !partenaireId) return toast('Choisissez le partenaire concerné.');
+    const cp = partenaireId ? S.cache.contacts.find(c => c.id === partenaireId) : null, partenaireNom = cp ? L.libelleContact(L.normContact(cp)) : '';
     const btn = $('#saveEq'); btn.disabled = true;
     try {
       if (id) {
-        await sauver('users', { id, nom, role, activites }, 'Accès mis à jour');
+        await sauver('users', { id, nom, role, activites, partenaireId, partenaireNom }, 'Accès mis à jour');
       } else {
         const email = $('#e2').value.trim().toLowerCase();
         if (!/^\S+@\S+\.\S+$/.test(email)) { btn.disabled = false; return toast('Adresse e-mail invalide.'); }
         if (S.cache.users.some(x => (x.email || '').toLowerCase() === email)) { btn.disabled = false; return toast('Cette adresse a déjà un accès.'); }
         const uid = await store.creerCompte(email);
-        await sauver('users', { id: uid, nom, email, role, activites }, MODE_REEL ? 'Accès créé : un e-mail a été envoyé' : 'Accès créé (démonstration)');
+        await sauver('users', { id: uid, nom, email, role, activites, partenaireId, partenaireNom }, MODE_REEL ? 'Accès créé : un e-mail a été envoyé' : 'Accès créé (démonstration)');
       }
       closeModal();
     } catch (e) {

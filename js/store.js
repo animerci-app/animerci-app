@@ -34,8 +34,8 @@ function backendDemo() {
     if (!data) data = donneesDemo();
     charger_users();
   };
-  const charger_users = () => { data.corbeille = data.corbeille || []; data.journal = data.journal || []; data.parametres = data.parametres || []; data.contacts = data.contacts || [];
-    if (!data.users || !data.users.length) data.users = Object.values(comptes).map(c => ({ id: c.uid, email: c.email, nom: c.nom, role: c.role, activites: c.activites })); };
+  const charger_users = () => { data.corbeille = data.corbeille || []; data.journal = data.journal || []; data.parametres = data.parametres || []; data.contacts = data.contacts || []; data.echanges = data.echanges || []; data.conventions = data.conventions || [];
+    if (!data.users || !data.users.length) data.users = Object.values(comptes).map(c => ({ id: c.uid, email: c.email, nom: c.nom, role: c.role, activites: c.activites, partenaireId: c.partenaireId || '', partenaireNom: c.partenaireNom || '' })); };
   const sauver = () => { try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) { /* stockage indisponible : on garde en mémoire */ } };
   const notifier = col => (ecoute[col] || new Set()).forEach(f => f());
   let authCb = () => {};
@@ -43,7 +43,8 @@ function backendDemo() {
   const comptes = {
     admin: { uid: 'demo-admin', email: 'admin@exemple.fr', nom: 'Responsable', role: 'admin', activites: [] },
     intervenant: { uid: 'demo-interv', email: 'fleuriste@exemple.fr', nom: 'Intervenante (fleuriste)', role: 'intervenant', activites: ['a-flo'] },
-    benevole: { uid: 'demo-benev', email: 'benevole@exemple.fr', nom: 'Bénévole', role: 'benevole', activites: [] }
+    benevole: { uid: 'demo-benev', email: 'benevole@exemple.fr', nom: 'Bénévole', role: 'benevole', activites: [] },
+    partenaire: { uid: 'demo-part', email: 'mediatheque@exemple.fr', nom: 'Médiathèque (essai partenaire)', role: 'partenaire', activites: [], partenaireId: 'c-med', partenaireNom: 'Médiathèque municipale' }
   };
   return {
     nom: 'demo',
@@ -76,7 +77,7 @@ function backendDemo() {
     async creerCompte(email) { return 'demo-' + uid(); },
     async changerMdp() { /* démonstration : pas de mot de passe */ },
     async resetMdp() { /* démonstration : aucun e-mail envoyé */ },
-    async reset() { data = donneesDemo(); charger_users(); sauver(); COLS.concat(['users', 'corbeille', 'journal', 'parametres', 'contacts']).forEach(notifier); }
+    async reset() { data = donneesDemo(); charger_users(); sauver(); COLS.concat(['users', 'corbeille', 'journal', 'parametres', 'contacts', 'echanges', 'conventions']).forEach(notifier); }
   };
 }
 
@@ -106,7 +107,7 @@ function backendFirebase() {
           const snap = await fb.getDoc(fb.doc(db, 'users', u.uid));
           if (!snap.exists()) return authCb({ uid: u.uid, email: u.email, nom: u.email, role: null });
           const d = snap.data();
-          authCb({ uid: u.uid, email: u.email, nom: d.nom || u.email, role: d.role || null, activites: d.activites || [] });
+          authCb({ uid: u.uid, email: u.email, nom: d.nom || u.email, role: d.role || null, activites: d.activites || [], partenaireId: d.partenaireId || '', partenaireNom: d.partenaireNom || '' });
         } catch (e) { authCb({ uid: u.uid, email: u.email, nom: u.email, role: null, erreur: e.message }); }
       });
     },

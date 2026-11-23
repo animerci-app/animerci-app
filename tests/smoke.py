@@ -13,7 +13,7 @@ with sync_playwright() as p:
     check(pg.locator('.demo-banner').count()==1,'bandeau démonstration affiché')
     pg.click('text=Essayer comme administratrice'); pg.wait_for_selector('text=Que voulez-vous faire')
     check('Responsable' in pg.inner_text('h1'),'accueil admin')
-    check(pg.locator('nav.side .nav-btn[data-v]').count()==10,'10 entrées de menu pour l\'administratrice')
+    check(pg.locator('nav.side .nav-btn[data-v]').count()==11,'11 entrées de menu pour l\'administratrice')
     # Personnes : ajout
     pg.click('nav.side [data-v=seniors]'); pg.wait_for_selector('#liste .cand')
     n0=pg.locator('#liste .cand').count()
@@ -66,12 +66,12 @@ with sync_playwright() as p:
     pg.screenshot(path='/tmp/fiches.png')
     # Équipe
     pg.click('nav.side [data-v=equipe]'); pg.wait_for_selector('text=Ajouter une personne')
-    check(pg.locator('.cand').count()==3,'équipe : 3 accès de démonstration')
+    check(pg.locator('.cand').count()==4,'équipe : 4 accès de démonstration')
     pg.click('text=+ Ajouter une personne'); pg.fill('#e1','Sophie Test'); pg.fill('#e2','sophie@exemple.fr'); pg.select_option('#e3','intervenant')
     pg.locator('.eact').first.check(); pg.click('#saveEq')
-    pg.wait_for_selector('text=Sophie Test'); check(pg.locator('.cand').count()==4,'équipe : accès créé')
+    pg.wait_for_selector('text=Sophie Test'); check(pg.locator('.cand').count()==5,'équipe : accès créé')
     pg.click('.cand:has-text("Sophie Test")'); pg.click('#delEq'); pg.click('#cfOk')
-    pg.wait_for_timeout(300); check(pg.locator('.cand').count()==3,'équipe : accès retiré')
+    pg.wait_for_timeout(300); check(pg.locator('.cand').count()==4,'équipe : accès retiré')
     # Sauvegarde
     check(pg.locator('text=Sauvegarde conseillée').count()==0,'pas de rappel hors accueil')
     pg.click('nav.side [data-v=sauvegarde]'); pg.wait_for_selector('text=Faire la sauvegarde')
@@ -86,7 +86,7 @@ with sync_playwright() as p:
     # Restauration : on supprime une personne puis on restaure
     pg.click('nav.side [data-v=sauvegarde]'); pg.set_input_files('#sv-fichier','/tmp/sv.json'); pg.wait_for_selector('#cfOk'); pg.click('#cfOk'); pg.wait_for_selector('text=Restauration terminée')
     # Annuaire (v1.4.0)
-    pg.click('nav.side [data-v=annuaire]'); pg.wait_for_selector('.cand'); check(pg.locator('.cand').count()==5,'annuaire : 5 contacts de démonstration')
+    pg.click('nav.side [data-v=annuaire]'); pg.wait_for_selector('.cand'); check(pg.locator('.cand').count()==6,'annuaire : 6 contacts de démonstration')
     pg.click('[data-action=filtre-contact][data-v="Intervenant·e"]'); check(pg.locator('.cand').count()==2,'annuaire : filtre par catégorie')
     pg.click('[data-action=filtre-contact][data-v=Tous]')
     pg.click('text=+ Ajouter'); pg.fill('#c1','Dr Test'); pg.select_option('#c2','Partenaire'); pg.fill('#c3','0600000000'); pg.click('#saveC'); pg.wait_for_timeout(300)

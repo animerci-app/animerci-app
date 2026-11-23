@@ -318,3 +318,11 @@ t('chargement du planning : une seule lecture couvrant 1, 2 ou 3 mois', () => {
 });
 
 console.log('ok - identifiants des fiches de démonstration');
+
+// Lot C : rôle partenaire dans besoins() : uniquement ses propres échanges
+{
+  const b = besoins({ role: 'partenaire', uid: 'p1', view: 'mespart', auj: '2026-11-23', activites: [] }).map(x => x.col + ':' + x.key);
+  assert.deepEqual(b.sort(), ['echanges:mes', 'parametres:all']);
+  assert.ok(!besoins({ role: 'partenaire', uid: 'p1', view: 'home', auj: '2026-11-23' }).some(x => ['contacts', 'seniors', 'activites', 'conventions'].includes(x.col)));
+  console.log('ok - partenaire : chargement limité à ses échanges');
+}

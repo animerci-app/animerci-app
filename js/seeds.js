@@ -82,7 +82,17 @@ export function donneesDemo() {
     { id: 'c-mus', categorie: 'Intervenant·e', nom: 'Musicien intervenant', prenom: '', organisme: true, note: 'Chorale (fictif)' },
     { id: 'c-ani', categorie: 'Collègue', nom: 'Animatrice du service', prenom: '', organisme: true },
     { id: 'c-ben', categorie: 'Bénévole', nom: 'Bénévole référent', prenom: '', organisme: true },
-    { id: 'c-par', categorie: 'Partenaire', nom: 'Association Les Jardins d\'Hiver', prenom: '', organisme: true, email: 'contact@exemple.fr', note: 'Partenaire fictif' }
+    { id: 'c-par', categorie: 'Partenaire', nom: 'Association Les Jardins d\'Hiver', prenom: '', organisme: true, email: 'contact@exemple.fr', note: 'Partenaire fictif', service: '', partenariat: 'Association locale', referent: 'Présidente (fictive)', projets: 'Atelier jardinage de printemps' },
+    { id: 'c-med', categorie: 'Partenaire', nom: 'Médiathèque municipale', prenom: '', organisme: true, note: 'Partenaire fictif', service: 'Médiathèque', partenariat: 'Service municipal', referent: 'Responsable (fictive)', projets: 'Lectures à voix haute' }
   ];
-  return { seniors, activites, inscriptions, seances, fiches, taches, contacts };
+  // Partenaires (lot C) : échanges et conventions fictifs, dates relatives à aujourd'hui
+  const echanges = [
+    { id: 'e-1', type: 'appel-sortant', date: plusJours(-12), heure: '10:00', etat: 'realise', interne: false, partenaireId: 'c-med', partenaire: 'Médiathèque municipale', service: 'Médiathèque', objet: 'Réserver la salle de lecture', resume: 'Salle confirmée pour le mois prochain.', suite: '', suiteDate: '', suiteFaite: false, suiteAFaire: false, par: 'Démonstration' },
+    { id: 'e-2', type: 'courriel', date: plusJours(-20), heure: '', etat: 'realise', interne: false, partenaireId: 'c-par', partenaire: 'Association Les Jardins d\'Hiver', service: '', objet: 'Proposer un atelier jardinage', resume: '', suite: 'Relancer pour la date', suiteDate: plusJours(-3), suiteFaite: false, suiteAFaire: true, par: 'Démonstration' },
+    { id: 'e-3', type: 'reunion', date: plusJours(6), heure: '14:00', etat: 'prevu', interne: true, partenaireId: '', partenaire: '', service: '', objet: 'Réunion mensuelle de l\'équipe de la résidence', resume: '', participants: '', odj: '', decisions: '', suite: '', suiteDate: '', suiteFaite: false, suiteAFaire: false, par: 'Démonstration' }
+  ];
+  const conventions = [
+    { id: 'v-1', partenaireId: 'c-med', partenaire: 'Médiathèque municipale', intitule: 'Convention de partenariat', statut: 'signee', signature: plusJours(-300), echeance: plusJours(15), emplacement: 'Classeur « Conventions » (fictif)', note: '', par: 'Démonstration' }
+  ];
+  return { seniors, activites, inscriptions, seances, fiches, taches, contacts, echanges, conventions };
 }

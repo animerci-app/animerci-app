@@ -7,6 +7,8 @@ import { cleNom, libelleContact, trouverContact, nomComplet, nomAffiche, compare
 import { champRecherche, comboLire, comboFixer, itemContact, NOUVEAU } from './recherche.js';
 import { S, pret, chargement, $, esc, initiales, modal, closeModal, toast, confirmer, sauver, mettreCorbeille, render } from './ui.js';
 
+const AVERT_PART = '<div class="note" style="margin:6px 0 10px"><b>✔ À écrire</b> : une information d\'organisation (« projets : dictée avec les CM2 », « à relancer en janvier »).<br><b>✘ À ne pas écrire</b> : toute information de santé, et le nom d\'une personne accompagnée.</div>';
+
 // Rubriques de l'outil où l'on choisit une personne de l'annuaire : collection et champ où le nom est gardé.
 // La catégorie qui alimente chaque rubrique est un paramètre (P('annuaire.rubriques.<clé>')).
 // Depuis la 1.4.1 le lien se fait par IDENTIFIANT (champ + 'Id') : deux personnes de même nom restent distinctes ;
@@ -85,7 +87,7 @@ function listeContacts() {
   if (q) { const ids = new Set(filtrer(rows.map(itemContact), q, 100000).liste.map(x => x.id)); rows = rows.filter(c => ids.has(c.id)); }
   if (!rows.length) return `<div class="card"><div class="empty"><b>${q ? 'Aucun résultat' : 'Aucun contact ici'}</b>${q ? 'Essayez un autre nom, un prénom ou un métier.' : 'Ajoutez-en avec le bouton, importez une liste, ou ajoutez directement depuis un formulaire (activité, tâche).'}</div></div>`;
   return rows.map(c => `<button class="cand" data-action="contact-form" data-id="${esc(c.id)}"><span class="av">${esc(initiales(nomComplet(c)))}</span>
-    <span style="flex:1"><b>${esc(nomAffiche(c))}</b><span class="why">${c.precision ? `<span class="pill p-rose">${esc(c.precision)}</span>` : ''}${c._derive ? '<span class="pill p-warn">à vérifier</span>' : ''}${c.tel ? `<span class="pill p-bleu">${esc(c.tel)}</span>` : ''}${c.email ? `<span class="pill p-rose">${esc(c.email)}</span>` : ''}${c.note ? `<span class="sub">${esc(c.note)}</span>` : ''}</span></span>
+    <span style="flex:1"><b>${esc(nomAffiche(c))}</b><span class="why">${c.precision ? `<span class="pill p-rose">${esc(c.precision)}</span>` : ''}${c._derive ? '<span class="pill p-warn">à vérifier</span>' : ''}${c.service ? `<span class="pill p-ok">${esc(c.service)}</span>` : ''}${c.tel ? `<span class="pill p-bleu">${esc(c.tel)}</span>` : ''}${c.email ? `<span class="pill p-rose">${esc(c.email)}</span>` : ''}${c.note ? `<span class="sub">${esc(c.note)}</span>` : ''}</span></span>
     <span class="pill p-warn">${esc(c.categorie || '—')}</span></button>`).join('');
 }
 export function annuaire() {
@@ -104,6 +106,8 @@ export function annuaire() {
 }
 export function apresAnnuaire() { const r = $('#rech-ann'); if (r) r.oninput = () => { S.rechAnn = r.value; $('#liste-ann').innerHTML = listeContacts(); }; }
 
+// Options d'une liste de Paramètres (la valeur déjà enregistrée reste proposée même si elle a été retirée de la liste)
+const optionsListe = (chemin, courant) => { const l = P(chemin); return ['', ...(courant && !l.includes(courant) ? [courant] : []), ...l].map(s => `<option value="${esc(s)}" ${s === (courant || '') ? 'selected' : ''}>${s ? esc(s) : '(aucun)'}</option>`).join(''); };
 function contactForm(id) {
   const cats = P('annuaire.categories'), brut = id ? S.cache.contacts.find(x => x.id === id) : null;
   const c = brut ? normContact(brut) : { categorie: S.filtreContact && S.filtreContact !== 'Tous' ? S.filtreContact : cats[0], prenom: '' };
@@ -119,7 +123,13 @@ function contactForm(id) {
   <div class="two"><div class="field"><label for="c3">Téléphone</label><input id="c3" type="tel" value="${esc(c.tel || '')}"></div>
   <div class="field"><label for="c4">E-mail</label><input id="c4" type="email" value="${esc(c.email || '')}"></div></div>
   <div class="field"><label for="c5">Remarque</label><input id="c5" value="${esc(c.note || '')}"></div>
-  <div class="quick" style="margin-top:14px"><button class="btn" id="saveC">Enregistrer</button><button class="btn ghost" data-action="close">Annuler</button>${id ? '<button class="btn ghost" id="delC" style="margin-left:auto">Supprimer</button>' : ''}</div>`);
+  <details class="field" ${c.service || c.partenariat || c.referent || c.projets || c.suite ? 'open' : ''}><summary><b>Suivi du partenariat</b> <small class="sub">(facultatif)</small></summary>
+    <div class="two" style="margin-top:8px"><div class="field"><label for="c9">Service ou structure</label><select id="c9">${optionsListe('partenaires.services', c.service)}</select></div>
+    <div class="field"><label for="c10">Type de partenariat</label><select id="c10">${optionsListe('partenaires.types', c.partenariat)}</select></div></div>
+    <div class="field"><label for="c11">Référent <small class="sub">(personne à contacter)</small></label><input id="c11" maxlength="120" value="${esc(c.referent || '')}"></div>
+    <div class="field"><label for="c12">Projets communs</label><input id="c12" maxlength="300" value="${esc(c.projets || '')}"></div>
+    <div class="field"><label for="c13">Suite à donner</label><input id="c13" maxlength="200" value="${esc(c.suite || '')}"></div>${AVERT_PART}</details>
+  <div class="quick" style="margin-top:14px"><button class="btn" id="saveC">Enregistrer</button><button class="btn ghost" data-action="close">Annuler</button>${id ? '<button class="btn sec" data-action="part-fiche" data-id="' + esc(id) + '">Voir le suivi (échanges, conventions)</button><button class="btn ghost" id="delC" style="margin-left:auto">Supprimer</button>' : ''}</div>`);
   const maj = () => { $('#c7z').style.display = $('#c8').checked ? 'none' : ''; }; $('#c8').onchange = maj; maj();
   $('#saveC').onclick = async () => {
     const nom = $('#c1').value.trim(); if (!nom) return toast('Le nom est nécessaire.');
@@ -129,7 +139,8 @@ function contactForm(id) {
     const memes = (await store.lire('contacts', ['categorie', '==', categorie])).map(normContact).filter(x => x.id !== id && cleNom(nomComplet(x)) === cle);
     if (memes.length && !precision) return toast(`Une autre personne porte déjà ce nom dans « ${categorie} » : ajoutez une précision (métier, organisme, ville…).`);
     if (memes.some(x => cleNom(x.precision) === cleNom(precision))) return toast(`${libelleContact({ nom, prenom, precision })} est déjà dans la liste « ${categorie} ».`);
-    const doc = { ...(id ? { id } : {}), nom, prenom, organisme, precision, categorie, tel: $('#c3').value.trim(), email: $('#c4').value.trim(), note: $('#c5').value.trim() };
+    const doc = { ...(id ? { id } : {}), nom, prenom, organisme, precision, categorie, tel: $('#c3').value.trim(), email: $('#c4').value.trim(), note: $('#c5').value.trim(),
+      service: $('#c9').value, partenariat: $('#c10').value, referent: $('#c11').value.trim(), projets: $('#c12').value.trim(), suite: $('#c13').value.trim() };
     const nid = await sauver('contacts', doc, 'Contact enregistré');
     if (id && libelleContact(c) !== libelleContact(doc)) await propager(c, { ...doc, id: nid });
     closeModal();
@@ -146,8 +157,10 @@ async function propager(ancien, nouveau) {
     if (P('annuaire.rubriques.' + r) !== ancien.categorie) continue;
     const { col, champ } = RUBRIQUES[r], cleId = champ + 'Id';
     for (const d of await store.lire(col, [cleId, '==', ancien.id])) await store.save(col, { id: d.id, [champ]: lib });
-    if (uniqueNom) for (const d of (await store.lire(col, [champ, '==', libelleContact(ancien)])).filter(x => !x[cleId])) await store.save(col, { id: d.id, [champ]: lib, [cleId]: ancien.id });
+  if (uniqueNom) for (const d of (await store.lire(col, [champ, '==', libelleContact(ancien)])).filter(x => !x[cleId])) await store.save(col, { id: d.id, [champ]: lib, [cleId]: ancien.id });
   }
+  // échanges et conventions des partenaires : le nom affiché suit la fiche (lien par identifiant)
+  for (const col of ['echanges', 'conventions']) for (const d of await store.lire(col, ['partenaireId', '==', ancien.id])) await store.save(col, { id: d.id, partenaire: lib });
 }
 
 export const actions = {

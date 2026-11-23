@@ -20,6 +20,13 @@ export const DEFAUTS = {
     categories: ['Intervenant·e', 'Intervenant·e ponctuel·le', 'Intervenant·e religieux·se', 'Partenaire', 'Association partenaire', 'Partenaire institutionnel', 'Bénévole', 'Conduites et accompagnements', 'Collègue'],
     rubriques: { activiteIntervenant: 'Intervenant·e', activitePartenaire: 'Partenaire', activiteBenevole: 'Bénévole', tacheResponsable: 'Collègue' }
   },
+  // Partenaires (lot C) : services et types proposés sur la fiche d'un partenaire, nom de la réunion mensuelle de l'équipe, délai d'alerte des conventions
+  partenaires: {
+    services: ['Halte-garderie municipale', 'Service jeunesse et CMJ', 'Service communication', 'Médiathèque', 'Services techniques', 'Accueil de la mairie', 'CCAS', 'Ressources humaines'],
+    types: ['Service municipal', 'Association locale', 'Association extérieure', 'Autre commune', 'Partenaire institutionnel', 'Établissement ou structure', 'Prestataire', 'Organisme de formation', 'Intervenant·e'],
+    reunionMensuelle: 'Réunion mensuelle de l\'équipe de la résidence',
+    alerteJours: 30
+  },
   // Lieux de vie : le nom de la résidence (pour les résident·es) et la commune proposée à l'inscription d'un·e adhérent·e
   residence: { nom: '', adresse: '' },
   commune: { defaut: '' },
@@ -29,7 +36,7 @@ export const DEFAUTS = {
   modules: { taches: true, bilans: true }
 };
 // Bornes acceptées pour les nombres (une valeur hors bornes est ignorée au profit de la valeur par défaut)
-const BORNES = { 'adhesion.montantDefaut': [0, 1000], 'securite.joursCorbeille': [1, 365], 'securite.joursJournal': [30, 1095], 'securite.rappelSauvegardeJours': [1, 365], 'securite.motDePasseMin': [8, 64], 'securite.horizonEmargementJours': [1, 90] };
+const BORNES = { 'adhesion.montantDefaut': [0, 1000], 'securite.joursCorbeille': [1, 365], 'securite.joursJournal': [30, 1095], 'securite.rappelSauvegardeJours': [1, 365], 'securite.motDePasseMin': [8, 64], 'securite.horizonEmargementJours': [1, 90], 'partenaires.alerteJours': [1, 365] };
 
 const lire = (obj, chemin) => chemin.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
 export function P(chemin) {
@@ -65,6 +72,11 @@ export function parametres() {
     ${liste('p-ann', 'annuaire.categories', 'Catégories de l\'annuaire', 'Une par ligne (ex. Intervenant·e, Partenaire, Bénévole, Collègue, Fournisseur…). Les contacts déjà créés gardent leur catégorie ; renommer une catégorie ne les déplace pas.')}
     <p class="sub" style="margin:0 0 8px">Quelle liste alimente quelle rubrique ? (Enregistrez d'abord les catégories, puis choisissez.)</p><div class="two">
     ${Object.entries(RUBR_LABELS).map(([k, l]) => `<div class="field"><label for="p-r-${k}">${l}</label><select id="p-r-${k}">${P('annuaire.categories').concat(P('annuaire.rubriques.' + k)).filter((v, i, t) => t.indexOf(v) === i).map(c => `<option ${P('annuaire.rubriques.' + k) === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></div>`).join('')}</div></div>
+  <div class="card" style="margin-bottom:14px"><h2 style="margin-top:0">Partenaires</h2>
+    ${liste('p-psv', 'partenaires.services', 'Services et structures', 'Une par ligne (services municipaux, associations…). Proposés sur la fiche d\'un partenaire et dans les filtres du comptage annuel.')}
+    ${liste('p-pty', 'partenaires.types', 'Types de partenariat', 'Une par ligne.')}
+    <div class="two"><div class="field"><label for="p-reu">Nom de la réunion mensuelle de l'équipe</label><input id="p-reu" value="${esc(P('partenaires.reunionMensuelle'))}"><small class="sub">Utilisé par « Planifier la série mensuelle » (écran Partenaires › Réunions).</small></div>
+    ${num('p-pal', 'partenaires.alerteJours', 'Alerte « convention » avant l\'échéance (jours)')}</div></div>
   <div class="card" style="margin-bottom:14px"><h2 style="margin-top:0">Adhésion et sécurité</h2><div class="two">
     ${num('p-cot', 'adhesion.montantDefaut', 'Montant de la cotisation proposé (€)')}
     ${num('p-pw', 'securite.motDePasseMin', 'Longueur minimale du mot de passe', 'Au moins 8. Une personne dont le mot de passe est plus court est invitée à le changer à la connexion.')}
@@ -82,8 +94,8 @@ const val = (id, ch) => { const v = Number($(id).value); const [a, b] = BORNES[c
 export const actions = {
   'param-save': async () => {
     if (!peutAdmin()) return;
-    const cats = lignes('#p-cats'), bud = lignes('#p-bud'), mob = lignes('#p-mob'), ann = lignes('#p-ann');
-    if (!cats.length || !bud.length || !mob.length || !ann.length) return toast('Chaque liste doit contenir au moins un choix.');
+    const cats = lignes('#p-cats'), bud = lignes('#p-bud'), mob = lignes('#p-mob'), ann = lignes('#p-ann'), psv = lignes('#p-psv'), pty = lignes('#p-pty');
+    if (!cats.length || !bud.length || !mob.length || !ann.length || !psv.length || !pty.length) return toast('Chaque liste doit contenir au moins un choix.');
     await sauver('parametres', {
       id: 'general', nomOutil: $('#p-nom').value.trim() || DEFAUTS.nomOutil, nomService: $('#p-svc').value.trim() || DEFAUTS.nomService,
       affiche: { lieu: $('#p-aff-l').value.trim(), pied: $('#p-aff-p').value.trim() || DEFAUTS.affiche.pied },
@@ -91,6 +103,7 @@ export const actions = {
       listes: { categories: cats, budgets: bud, mobilites: mob },
       annuaire: { categories: ann, rubriques: Object.fromEntries(Object.keys(RUBR_LABELS).map(k => [k, ann.includes($('#p-r-' + k).value) ? $('#p-r-' + k).value : ann[0]])) },
       adhesion: { montantDefaut: val('#p-cot', 'adhesion.montantDefaut') },
+      partenaires: { services: psv, types: pty, reunionMensuelle: $('#p-reu').value.trim() || DEFAUTS.partenaires.reunionMensuelle, alerteJours: val('#p-pal', 'partenaires.alerteJours') },
       securite: { motDePasseMin: val('#p-pw', 'securite.motDePasseMin'), joursCorbeille: val('#p-corb', 'securite.joursCorbeille'), joursJournal: val('#p-jour', 'securite.joursJournal'), rappelSauvegardeJours: val('#p-rap', 'securite.rappelSauvegardeJours'), horizonEmargementJours: val('#p-hor', 'securite.horizonEmargementJours') },
       modules: { taches: $('#p-m-taches').checked, bilans: $('#p-m-bilans').checked }
     }, 'Paramètres enregistrés');

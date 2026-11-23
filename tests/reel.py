@@ -33,7 +33,7 @@ with sync_playwright() as p:
     login('m@x.fr','faux'); pg.wait_for_selector('#lerr',state='visible'); check('incorrect' in pg.inner_text('#lerr'),'mot de passe erroné : message clair')
     # administratrice
     login('m@x.fr','pw1'); pg.wait_for_selector('text=Que voulez-vous faire')
-    check(pg.locator('nav.side .nav-btn[data-v]').count()==10,'admin : 10 entrées de menu')
+    check(pg.locator('nav.side .nav-btn[data-v]').count()==11,'admin : 11 entrées de menu')
     # mot de passe trop court (pw1 = 3 caractères) : bandeau + changement
     check(pg.locator('text=Votre mot de passe est trop court').count()==1,'mot de passe court : bandeau affiché')
     pg.click('main [data-action=mdp-form]'); pg.wait_for_selector('#m0')
@@ -185,6 +185,18 @@ with sync_playwright() as p:
     with pg.expect_download() as dl2: pg.click('[data-action=sv-json]')
     sv2=_j.load(open(dl2.value.path())); check(isinstance(sv2.get('contacts'),list),'sauvegarde .json : annuaire inclus')
     check(pg.evaluate("window.__fb.denied.length")==0,'aucun refus de règle pendant les tests de chargement')
+    # --- compte Partenaire (mode réel) : ne voit et n'écrit que ses propres échanges ---
+    pg.evaluate("()=>{const F=window.__fb; F.db.users.p1={nom:'Médiathèque',role:'partenaire',activites:[],partenaireId:'c-med',partenaireNom:'Médiathèque municipale'}; F.accounts['p@x.fr']={uid:'p1',pw:'pw5'};}")
+    pg.click('[data-action=compte]'); pg.click('.modal [data-action=logout]'); pg.wait_for_selector('#fl'); login('p@x.fr','pw5'); pg.wait_for_selector('text=Mes échanges')
+    check(pg.locator('nav.side .nav-btn[data-v]').count()==1,'partenaire (réel) : un seul écran')
+    pg.click('text=+ Nouvel échange'); pg.fill('#m3','Proposition réelle'); pg.click('#saveM'); pg.wait_for_timeout(600)
+    check(pg.evaluate("Object.values(window.__fb.db.echanges).some(e=>e.objet==='Proposition réelle'&&e.parUid==='p1'&&e.partenaireId==='c-med')"),'partenaire (réel) : échange écrit avec son identifiant')
+    check('Proposition réelle' in pg.inner_text('main') and 'Réserver la salle' not in pg.inner_text('main'),'partenaire (réel) : ne voit pas les échanges de l\'administratrice')
+    r=pg.evaluate("""async()=>{const {store}=await import('/js/store.js'); const out={};
+      for(const [c,d] of [['conventions',{intitule:'x'}],['contacts',{nom:'x'}],['seniors',{nom:'x'}],['echanges',{objet:'autre',parUid:'p1',partenaireId:'c-par',interne:false}],['echanges',{objet:'interne',parUid:'p1',partenaireId:'c-med',interne:true}]]) { try { await store.save(c,d); out[c+(d.interne?'-int':'')+(d.partenaireId==='c-par'?'-autre':'')]='ECRIT'; } catch(e) { out[c+(d.interne?'-int':'')+(d.partenaireId==='c-par'?'-autre':'')]='refusé'; } }
+      return out;}""")
+    check(all(v=='refusé' for v in r.values()),'partenaire (réel) : refus pour conventions, annuaire, personnes, autre partenaire, réunion interne '+str(r))
+    pg.evaluate("window.__fb.denied.length=0")
     print('Erreurs console :',errs or 'aucune'); 
     if errs: fails.append('console')
     print('ÉCHECS :',fails or 'aucun')

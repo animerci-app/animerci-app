@@ -5,6 +5,7 @@ rules_version = '2';
 //  - intervenant  : lit les activités ; lit les inscriptions et séances de SES activités ;
 //                   peut enregistrer un appel mais PAS le valider
 //  - benevole     : lit uniquement les activités (planning)
+//  - partenaire   : (accès ouvert par l'administratrice, p. ex. pour un essai) lit et saisit SES propres échanges, rien d'autre
 // Les comptes et leurs rôles (collection "users") sont créés dans la console Firebase.
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -61,15 +62,27 @@ service cloud.firestore {
     // Annuaire (intervenants, partenaires, bénévoles, collègues : coordonnées) : administratrice uniquement
     match /contacts/{id} { allow read, write: if estAdmin(); }
 
+    // Partenaires (v1.16.0) : journal des échanges (appels, courriels, réunions…) et conventions. Aucune donnée de santé.
+    // Administratrice uniquement pour l'instant ; chaque échange porte le champ « par » (qui l'a saisi) : ouvrir la saisie à l'équipe se fera ici, sans refaire les données.
+    // Un compte « partenaire » ne lit que les échanges qu'il a saisis (champ parUid) et ne peut ni les supprimer ni les rattacher à un autre partenaire.
+    function monEchange(d) { return role() == 'partenaire' && d.parUid == request.auth.uid && d.partenaireId == profil().partenaireId && d.interne != true; }
+    match /echanges/{id} {
+      allow read: if estAdmin() || (role() == 'partenaire' && resource.data.parUid == request.auth.uid);
+      allow create: if estAdmin() || monEchange(request.resource.data);
+      allow update: if estAdmin() || (monEchange(resource.data) && monEchange(request.resource.data));
+      allow delete: if estAdmin();
+    }
+    match /conventions/{id} { allow read, write: if estAdmin(); }
+
     // Paramètres de l'outil (noms, listes, durées, modules) : lisibles par tout rôle connu, modifiables par l'admin seule
     match /parametres/{id} {
-      allow read: if role() in ['admin', 'intervenant', 'benevole'];
+      allow read: if role() in ['admin', 'intervenant', 'benevole', 'partenaire'];
       allow write: if estAdmin();
     }
 
     // Journal des modifications : tout rôle connu peut y ajouter une ligne, seule l'admin le lit et le nettoie
     match /journal/{id} {
-      allow create: if role() in ['admin', 'intervenant', 'benevole'];
+      allow create: if role() in ['admin', 'intervenant', 'benevole', 'partenaire'];
       allow read, delete: if estAdmin();
       allow update: if false;
     }

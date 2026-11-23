@@ -6,6 +6,7 @@ import * as core from './views-core.js';
 import * as act from './views-activites.js';
 import * as eq from './views-equipe.js';
 import * as ann from './annuaire.js';
+import * as part from './partenaires.js';
 import { installerRecherche, oublierRecents, champRecherche, itemPersonne, itemContact, itemActivite, AIDE_PERSONNE } from './recherche.js';
 import * as imp from './importer.js';
 import * as pwa from './pwa.js';
@@ -15,19 +16,20 @@ import * as pa from './parametres.js';
 import { P, moduleActif } from './parametres.js';
 
 const NAV = {
-  admin: [['home', 'Accueil', '⌂'], ['seniors', 'Personnes', '☺'], ['activites', 'Activités', '♥'], ['planning', 'Planning', '▦'], ['taches', 'Tâches', '✓'], ['bilans', 'Bilans', '▮'], ['annuaire', 'Annuaire', '☎'], ['equipe', 'Équipe', '☻'], ['parametres', 'Paramètres', '⚙'], ['sauvegarde', 'Sécurité', '⛨']],
+  admin: [['home', 'Accueil', '⌂'], ['seniors', 'Personnes', '☺'], ['activites', 'Activités', '♥'], ['planning', 'Planning', '▦'], ['taches', 'Tâches', '✓'], ['bilans', 'Bilans', '▮'], ['annuaire', 'Annuaire', '☎'], ['partenaires', 'Partenaires', '⇄'], ['equipe', 'Équipe', '☻'], ['parametres', 'Paramètres', '⚙'], ['sauvegarde', 'Sécurité', '⛨']],
   intervenant: [['activites', 'Mes activités', '♥'], ['planning', 'Planning', '▦']],
-  benevole: [['planning', 'Planning', '▦']]
+  benevole: [['planning', 'Planning', '▦']],
+  partenaire: [['mespart', 'Mes échanges', '⇄']]
 };
 // Modules facultatifs : masqués du menu quand l'administratrice les désactive (Paramètres)
 const FACULTATIFS = { taches: 'taches', bilans: 'bilans' };
 const navPour = role => (NAV[role] || []).filter(([k]) => !(k in FACULTATIFS) || moduleActif(FACULTATIFS[k]));
-const ACCUEIL = { admin: 'home', intervenant: 'activites', benevole: 'planning' };
+const ACCUEIL = { admin: 'home', intervenant: 'activites', benevole: 'planning', partenaire: 'mespart' };
 
 /* ---------- Données ---------- */
 // Chargement à la demande : on ne s'abonne qu'à ce que l'écran ouvert affiche (voir donnees.js). Chaque abonnement n'est créé qu'une fois.
 let unsubs = [], parts = {}, actifs = new Set(), minuteurPurge = null, rendu = false;
-const COLS_ECOUTE = COLS.concat(['users', 'corbeille', 'journal', 'parametres', 'contacts']);
+const COLS_ECOUTE = COLS.concat(['users', 'corbeille', 'journal', 'parametres', 'contacts', 'echanges', 'conventions']);
 function planifierRendu() { if (rendu) return; rendu = true; Promise.resolve().then(() => { rendu = false; render(); }); }
 function listen(col, key, filtre, opts) {
   unsubs.push(store.subscribe(col, (rows, err) => {
@@ -42,7 +44,7 @@ function listen(col, key, filtre, opts) {
 function synchroniser() {
   const u = S.user; if (!u || !u.role) return;
   const mes = (u.activites || []);
-  for (const b of besoins({ role: u.role, view: S.view, actId: S.actId, mois: S.moisPlan || { a: new Date().getFullYear(), m: new Date().getMonth() }, nbMois: S.nbMois, stat: S.stat,
+  for (const b of besoins({ role: u.role, uid: u.uid, view: S.view, actId: S.actId, mois: S.moisPlan || { a: new Date().getFullYear(), m: new Date().getMonth() }, nbMois: S.nbMois, stat: S.stat, anPart: S.anPart, partId: S.partId,
     rechGlobale: S.rechGlobale, onglet: sec.ongletCourant(), auj: aujourdhui(), horizonSorties: ajouterJours(aujourdhui(), 60), activites: S.cache.activites, mesActivites: mes })) {
     const k = b.col + '|' + b.key; if (actifs.has(k)) continue;
     actifs.add(k); listen(b.col, b.key, b.filtre, b.opts);
@@ -80,7 +82,8 @@ function ecranConnexion() {
     <div class="quick" style="flex-direction:column;align-items:stretch">
     <button class="btn" data-action="demo" data-v="admin">Essayer comme administratrice (accès complet)</button>
     <button class="btn blue" data-action="demo" data-v="intervenant">Essayer comme intervenante (appel de son atelier)</button>
-    <button class="btn sec" data-action="demo" data-v="benevole">Essayer comme bénévole (planning)</button></div>`}${pwa.boutonInstaller(true)}</div></div>`;
+    <button class="btn sec" data-action="demo" data-v="benevole">Essayer comme bénévole (planning)</button>
+    <button class="btn sec" data-action="demo" data-v="partenaire">Essayer comme partenaire (ses échanges)</button></div>`}${pwa.boutonInstaller(true)}</div></div>`;
 }
 function ecranSansRole() {
   return `<div class="login"><div class="card"><h1>Accès à activer</h1><p>Votre compte (${esc(S.user.email)}) est bien connecté, mais aucun rôle ne lui a encore été attribué. Demandez à l'administratrice de l'activer.</p>
@@ -95,7 +98,7 @@ function nav() {
     `<button class="nav-btn nav-compte" data-action="compte"><span aria-hidden="true" style="width:20px;text-align:center">☰</span><span>Compte</span></button>` +
     `<div class="foot"><div>${esc(S.user.nom)}</div><div style="font-size:12px;opacity:.7">Version ${VERSION}</div>${MODE_REEL ? '<button class="nav-btn" style="padding:6px 0;font-size:13px" data-action="mdp-form">Mon mot de passe</button>' : ''}${pwa.boutonInstaller()}<button class="nav-btn" style="padding:6px 0" data-action="logout">Se déconnecter</button>${MODE_REEL ? '' : '<button class="nav-btn" style="padding:6px 0;font-size:13px" data-action="reset-demo">Remettre les données de démonstration</button>'}</div>`;
 }
-const VUES = { home: core.accueil, seniors: core.seniors, taches: core.taches, planning: core.planning, bilans: core.bilans, activites: act.activites, activite: act.activite, annuaire: ann.annuaire, equipe: eq.equipe, sauvegarde: sec.securite, parametres: pa.parametres };
+const VUES = { home: core.accueil, seniors: core.seniors, taches: core.taches, planning: core.planning, bilans: core.bilans, activites: act.activites, activite: act.activite, annuaire: ann.annuaire, partenaires: part.partenaires, mespart: part.espacePartenaire, equipe: eq.equipe, sauvegarde: sec.securite, parametres: pa.parametres };
 
 setRender(() => {
   synchroniser();
@@ -111,16 +114,17 @@ setRender(() => {
   main.innerHTML = faible + (S.erreur ? `<div class="err" role="alert">${esc(S.erreur)}</div>` : '') + (VUES[S.view] || core.accueil)();
   if (S.view === 'seniors') core.afterSeniors();
   if (S.view === 'annuaire') ann.apresAnnuaire();
+  if (S.view === 'partenaires') part.apresPartenaires();
   if (S.view === 'sauvegarde') sec.apresSecurite();
 });
 
 /* ---------- Événements ---------- */
 const actions = {
-  ...core.actions, ...act.actions, ...eq.actions, ...ann.actions, ...sec.actions, ...pa.actions, ...imp.actions, ...pwa.actions,
+  ...core.actions, ...act.actions, ...eq.actions, ...ann.actions, ...part.actions, ...sec.actions, ...pa.actions, ...imp.actions, ...pwa.actions,
   'rech-globale': () => rechGlobale(),
   close: () => closeModal(),
   compte: () => {
-    const roles = { admin: 'Administratrice', intervenant: 'Intervenant·e', benevole: 'Bénévole' };
+    const roles = { admin: 'Administratrice', intervenant: 'Intervenant·e', benevole: 'Bénévole', partenaire: 'Partenaire' };
     modal(`<h2>Mon compte</h2><p style="margin:0"><b>${esc(S.user.nom)}</b></p><p class="sub" style="margin:0 0 12px">${esc(roles[S.user.role] || '')} · version ${VERSION}</p>
     <div class="quick" style="flex-direction:column;align-items:stretch">
     ${MODE_REEL ? '<button class="btn sec" data-action="mdp-form">Changer mon mot de passe</button>' : '<button class="btn sec" data-action="reset-demo">Remettre les données de démonstration</button>'}
@@ -163,7 +167,7 @@ async function rechGlobale() {
   <p class="sub">Choisissez un résultat pour ouvrir sa fiche.</p>`);
   const champ = $('#rg'); if (champ) champ.focus();
 }
-const changes = { ...core.changes, ...act.changes, ...ann.changes };
+const changes = { ...core.changes, ...act.changes, ...ann.changes, ...part.changes };
 
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-action]'); if (!el || el.tagName === 'INPUT' && el.type === 'checkbox') return;
