@@ -31,7 +31,9 @@ export function donneesDemo() {
     { id: 'a-mar', nom: 'Marche douce', cat: 'Bien-être', type: 'activite', jour: 'Jeu. · 9h30', lieu: 'Départ mairie', cap: 20, budget: 'Budget ville', interv: 'Bénévole référent', date: plusJours(6) },
     { id: 'a-cho', nom: 'Chorale des aînés', cat: 'Culture', type: 'activite', jour: 'Ven. · 10h', lieu: 'Salle des fêtes', cap: 25, budget: 'Budget ville', interv: 'Musicien intervenant', date: plusJours(8) },
     { id: 'a-bru', nom: 'Sortie au marché de Noël de Bruxelles', cat: 'Sortie', type: 'sortie', jour: 'Sam. · départ 8h', lieu: 'Parking de la mairie', cap: 50, budget: 'Budget ville', interv: 'Autocariste', date: plusJours(29) },
-    { id: 'a-rep', nom: 'Repas de Noël des seniors', cat: 'Événement', type: 'evenement', jour: 'Mer. · 12h', lieu: 'Salle des fêtes', cap: 200, budget: 'Budget ville', interv: 'Traiteur', date: plusJours(33) }
+    { id: 'a-rep', nom: 'Repas de Noël des seniors', cat: 'Événement', type: 'evenement', jour: 'Mer. · 12h', lieu: 'Salle des fêtes', cap: 200, budget: 'Budget ville', interv: 'Traiteur', date: plusJours(33) },
+    // Événement déjà passé cette année : exemple pour « Préparer mon année » (lot G, v1.23.0)
+    { id: 'a-gal', nom: 'Galette des rois', cat: 'Événement', type: 'evenement', jour: '', lieu: 'Salle des fêtes', cap: 60, budget: 'Budget ville', interv: 'Équipe du service', date: plusJours(-200) }
   ];
 
   const inscriptions = [];
@@ -59,6 +61,12 @@ export function donneesDemo() {
     const pres = {};
     for (let i = 0; i < 12; i++) pres['s' + (i + 1)] = (i + k) % 9 === 0 ? 'a' : 'p';
     seances.push({ id: 'se-mem-' + k, activiteId: 'a-mem', date: plusJours(-60 + k * 7), presences: pres, valide: true });
+  }
+  // Séances validées de l'année précédente (même atelier) : permettent de tester la comparaison entre deux années (lot G, v1.23.0)
+  for (let k = 0; k < 6; k++) {
+    const pres = {};
+    for (let i = 0; i < 10; i++) pres['s' + (i + 1)] = (i + k) % 7 === 0 ? 'a' : 'p';
+    seances.push({ id: 'se-memprec-' + k, activiteId: 'a-mem', date: plusJours(-60 + k * 7 - 365), presences: pres, valide: true });
   }
 
   const fiches = seniors.slice(0, 8).map((s, i) => ({

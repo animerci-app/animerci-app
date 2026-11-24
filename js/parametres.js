@@ -3,6 +3,7 @@
 // Pour ajouter un paramètre : l'ajouter dans DEFAUTS, l'utiliser avec P('section.nom'), l'afficher dans le formulaire ci-dessous.
 import { S, $, esc, toast, confirmer, sauver, render, peutAdmin } from './ui.js';
 import { store } from './store.js';
+import * as L from './logic.js';
 
 export const DEFAUTS = {
   nomOutil: 'AniMerci',
@@ -80,6 +81,8 @@ const lignes = id => [...new Set($(id).value.split('\n').map(x => x.trim()).filt
 export function parametres() {
   const num = (id, ch, lab, aide) => `<div class="field"><label for="${id}">${lab}</label><input id="${id}" type="number" value="${esc(P(ch))}" min="${BORNES[ch][0]}" max="${BORNES[ch][1]}">${aide ? `<small class="sub">${aide}</small>` : ''}</div>`;
   const liste = (id, ch, lab, aide) => `<div class="field"><label for="${id}">${lab}</label><textarea id="${id}" rows="6">${esc(P(ch).join('\n'))}</textarea><small class="sub">${aide}</small></div>`;
+  // Catégories d'activités (v1.23.0) : affichées par ordre alphabétique (accents français), comme les sections de l'écran Activités qui s'y réfèrent.
+  const listeTriee = (id, ch, lab, aide) => `<div class="field"><label for="${id}">${lab}</label><textarea id="${id}" rows="6">${esc(P(ch).slice().sort(L.comparerTexte).join('\n'))}</textarea><small class="sub">${aide}</small></div>`;
   return `<div class="top"><div><h1>Paramètres</h1><p>Adapter l'outil sans toucher au programme. Les changements s'appliquent à toute l'équipe.</p></div></div>
   <div class="card" style="margin-bottom:14px"><h2 style="margin-top:0">Noms</h2><div class="two">
     <div class="field"><label for="p-nom">Nom de l'outil</label><input id="p-nom" value="${esc(P('nomOutil'))}"></div>
@@ -91,7 +94,7 @@ export function parametres() {
     <div class="field"><label for="p-resadr">Adresse de la résidence</label><input id="p-resadr" value="${esc(P('residence.adresse'))}" placeholder="numéro, rue, code postal, commune"><small class="sub">À l'import d'une liste, une personne qui habite cette adresse est classée « Résident·e » automatiquement.</small></div>
     <div class="field"><label for="p-com">Commune proposée à l'inscription</label><input id="p-com" value="${esc(P('commune.defaut'))}" placeholder="commune du service"><small class="sub">Proposée sur la fiche d'un·e adhérent·e, modifiable pour les personnes d'autres communes.</small></div></div></div>
   <div class="card" style="margin-bottom:14px"><h2 style="margin-top:0">Listes de choix</h2>
-    ${liste('p-cats', 'listes.categories', 'Catégories d\'activités', 'Une par ligne. Les activités déjà créées gardent leur catégorie.')}
+    ${listeTriee('p-cats', 'listes.categories', 'Catégories d\'activités', 'Une par ligne, affichées par ordre alphabétique (ordre repris dans les sections de l\'écran Activités). Les activités déjà créées gardent leur catégorie.')}
     ${liste('p-bud', 'listes.budgets', 'Budgets', 'Une par ligne.')}
     ${liste('p-mob', 'listes.mobilites', 'Déplacements (fiche de sortie)', 'Une par ligne. <b>Le premier choix</b> signifie « aucune difficulté ». <b>✔ À mettre</b> : des choix d\'organisation (« transport à organiser », « besoin d\'un accompagnement »). <b>✘ À ne pas mettre</b> : toute information de santé (maladie, handicap, matériel médical…).')}</div>
   <div class="card" style="margin-bottom:14px"><h2 style="margin-top:0">Annuaire</h2>

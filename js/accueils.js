@@ -21,9 +21,9 @@ const accueilDe = id => liste().find(x => x.id === id);
 
 /* ---------- Écran ---------- */
 export function accueils() {
-  if (!pret('accueils')) return chargement('Accueils');
+  if (!pret('accueils')) return chargement('Accueils jeunes et stagiaires');
   const tab = ongletAccueils(), nouveau = tab !== 'chiffres';
-  return `<div class="top"><div><h1>Accueils</h1><p>Jeunes adultes de la bourse, services civiques et stagiaires accueillis par le service : dates, missions, convention, suivi et heures.</p></div>
+  return `<div class="top"><div><h1>Accueils jeunes et stagiaires</h1><p>Jeunes adultes de la bourse, services civiques et stagiaires accueillis par le service : dates, missions, convention, suivi et heures.</p></div>
     <div class="quick">${nouveau ? `<button class="btn" data-action="ac-form" data-type="${tab}">+ Nouvelle fiche</button>` : '<button class="btn sec" data-action="ac-xlsx">Excel (.xlsx)</button><button class="btn sec" data-action="ac-pdf">PDF / Imprimer</button>'}</div></div>
   <div class="filters" role="tablist">${ONGLETS.map(([k, l]) => `<button role="tab" data-action="ac-tab" data-v="${k}" aria-pressed="${tab === k}">${l}</button>`).join('')}</div>
   ${tab === 'chiffres' ? vueChiffres() : vueListe(tab)}`;

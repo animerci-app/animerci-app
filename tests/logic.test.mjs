@@ -893,3 +893,53 @@ t('lot J : les données de démonstration sont cohérentes', () => {
   for (const r of d.reponsesQuestionnaire) assert.equal(L.erreurReponseQuestionnaire(r), '', r.id);
   for (const v of d.voyages) assert.equal(L.erreurVoyage(v), '', v.id);
 });
+
+t('lot G (v1.23.0) : date reportée d\'un an, y compris 29 février', () => {
+  assert.equal(L.dateAnneeSuivante('2026-03-14'), '2027-03-14');
+  assert.equal(L.dateAnneeSuivante('2028-02-29'), '2029-02-28'); // 2029 n'est pas bissextile
+  assert.equal(L.dateAnneeSuivante(''), '');
+});
+t('lot G : activités à reconduire (datées, de l\'année en cours, déjà passées)', () => {
+  const activites = [
+    { id: '1', date: '2026-01-10' }, // passée cette année
+    { id: '2', date: '2026-12-31' }, // future cette année
+    { id: '3', date: '2025-01-10' }, // passée mais année précédente : déjà traitée l'an dernier
+    { id: '4', date: '' } // activité régulière sans date : rien à reconduire
+  ];
+  const r = L.activitesAReconduire(activites, '2026-06-01');
+  assert.deepEqual(r.map(a => a.id), ['1']);
+});
+t('lot G : reconduction d\'une activité (sans id, sans inscriptions, date reportée d\'un an)', () => {
+  const a = { id: 'a-gal', nom: 'Galette des rois', cat: 'Événement', date: '2026-01-10', cap: 60, inscriptions: ['x'] };
+  const r = L.reconduireActivite(a);
+  assert.equal(r.id, undefined); assert.equal(r.date, '2027-01-10'); assert.equal(r.nom, 'Galette des rois'); assert.equal(r.cap, 60);
+});
+t('lot G : comparaison des statistiques entre deux années (écarts +/− ou stable)', () => {
+  const actuel = { personnesUniques: 12, participations: 60, seances: 6, absents: 2, excuses: 1, desistements: 0, tauxPresence: 88 };
+  const precedent = { personnesUniques: 10, participations: 70, seances: 6, absents: 2, excuses: 0, desistements: 1, tauxPresence: 80 };
+  const e = L.comparerStatistiques(actuel, precedent);
+  assert.equal(e.personnesUniques, '+2'); assert.equal(e.participations, '−10'); assert.equal(e.seances, 'stable'); assert.equal(e.excuses, '+1'); assert.equal(e.tauxPresence, '+8');
+  assert.equal(L.comparerStatistiques(actuel, null).personnesUniques, '', 'pas d\'année de comparaison : pas d\'écart affiché');
+});
+t('lot G : les données de démonstration fournissent un cas « à reconduire » et une année antérieure pour comparer les bilans', () => {
+  const d = donneesDemo();
+  const auj = new Date().toISOString().slice(0, 10);
+  assert.ok(L.activitesAReconduire(d.activites, auj).some(a => a.id === 'a-gal'), 'la galette des rois (événement passé) doit apparaître à reconduire');
+  const anneesSeances = new Set(d.seances.map(s => s.date.slice(0, 4)));
+  assert.ok(anneesSeances.size >= 2, 'au moins deux années différentes de séances validées, pour tester la comparaison');
+});
+t('lot G : écran Activités — regroupement par catégorie, catégories ET activités triées par ordre alphabétique français ; « Autres » toujours en dernier', () => {
+  const connues = new Set(['Créatif', 'Mémoire', 'Bien-être', 'Culture', 'Sortie', 'Événement', 'Activité physique', 'Repas']);
+  const rows = [
+    { id: '1', nom: 'Zythologie', cat: 'Culture' }, { id: '2', nom: 'Été indien', cat: 'Créatif' }, { id: '3', nom: 'Atelier bois', cat: 'Inconnue' },
+    { id: '4', nom: 'Sans nom', cat: '' }, { id: '5', nom: 'Aquarelle', cat: 'Créatif' }, { id: '6', nom: 'Élan créatif', cat: 'Créatif' }
+  ];
+  const groupes = new Map(), autres = [];
+  for (const a of rows) { if (a.cat && connues.has(a.cat)) { if (!groupes.has(a.cat)) groupes.set(a.cat, []); groupes.get(a.cat).push(a); } else autres.push(a); }
+  const cles = [...groupes.keys()].sort(L.comparerTexte);
+  const blocs = cles.map(c => [c, groupes.get(c).slice().sort((x, y) => L.comparerTexte(x.nom, y.nom))]);
+  if (autres.length) blocs.push(['Autres', autres.slice().sort((x, y) => L.comparerTexte(x.nom, y.nom))]);
+  assert.deepEqual(blocs.map(([c]) => c), ['Créatif', 'Culture', 'Autres'], 'catégories dans l\'ordre alphabétique français (É après Cr, avant Cu ignoré) ; Autres en dernier');
+  assert.deepEqual(blocs[0][1].map(a => a.nom), ['Aquarelle', 'Élan créatif', 'Été indien'], 'activités d\'une même catégorie triées par ordre alphabétique (accents inclus)');
+  assert.deepEqual(blocs[2][1].map(a => a.nom), ['Atelier bois', 'Sans nom']);
+});

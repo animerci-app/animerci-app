@@ -296,8 +296,9 @@ export function planning() {
   const titre = nbm === 1 ? `${MOIS[m]} ${a}` : `${MOIS[m]} ${a} – ${MOIS[fin.getMonth()]} ${fin.getFullYear()}`;
   let grilles = ''; for (let k = 0; k < nbm; k++) { const d = new Date(a, m + k, 1); grilles += grilleMois(d.getFullYear(), d.getMonth(), auj); }
   const admin = S.user.role === 'admin';
-  return `<div class="top"><div><h1>Planning</h1><p>Une seule saisie : ce que vous ajoutez dans les activités apparaît ici.</p></div>
-    ${admin ? '<div class="quick"><button class="btn" data-action="affiche">Créer l\'affiche de la semaine</button><button class="btn sec" data-action="programme">Programme à imprimer</button></div>' : ''}</div>
+  const aReconduire = admin ? L.activitesAReconduire(S.cache.activites, auj).length : 0;
+  return `<div class="top"><div><h1>Planning</h1><p>Une seule saisie : ce que vous ajoutez dans les activités apparaît ici. Le programme (bouton ci-dessous) peut couvrir plusieurs mois, y compris sur plusieurs années.</p></div>
+    ${admin ? `<div class="quick"><button class="btn" data-action="affiche">Créer l'affiche de la semaine</button><button class="btn sec" data-action="programme">Programme à imprimer</button><button class="btn ${aReconduire ? 'blue' : 'sec'}" data-action="preparer-annee">Préparer mon année${aReconduire ? ` (${aReconduire})` : ''}</button></div>` : ''}</div>
   <div class="card"><div class="filters noprint" aria-label="Nombre de mois affichés">${[1, 2, 3].map(n => `<button data-action="nb-mois" data-v="${n}" aria-pressed="${nbm === n}">${n} mois</button>`).join('')}</div>
     <div class="quick" style="justify-content:space-between;align-items:center;margin-bottom:12px">
     <button class="btn sec sm" data-action="mois" data-v="-1" aria-label="Période précédente">← Précédent</button><h2 style="margin:0;text-align:center">${titre}</h2><button class="btn sec sm" data-action="mois" data-v="1" aria-label="Période suivante">Suivant →</button></div>
@@ -329,6 +330,23 @@ function programme() {
   $('#pg-imp').onclick = () => window.print();
   $('#pg-cp').onclick = () => { const du = $('#pg1').value, au = $('#pg2').value; if (du && au && du <= au) copier(programmeTexte(du, au).texte, 'Programme copié'); };
 }
+// « Préparer mon année » (cahier § 17.2-17.4) : reconduction en un clic des activités et événements datés dont la date est déjà passée cette année-là,
+// vers la même date (mois/jour) l'année suivante. Les inscriptions, appels et fiches ne sont pas repris ; la date est à ajuster si besoin dans la fiche reconduite.
+function preparerAnnee() {
+  const faites = new Set();
+  const dessiner = () => {
+    const liste = L.activitesAReconduire(S.cache.activites, aujourdhui()).filter(a => !faites.has(a.id));
+    modal(`<h2>Préparer mon année</h2><p class="sub">Ces activités et événements de cette année sont passés : reconduisez-les en un clic pour l'année suivante, à la même date. Vous pourrez ensuite ajuster chaque fiche (nouvelle date exacte, intervenant·e, etc.).</p>
+    ${liste.length ? liste.map(a => `<div class="row"><div class="grow"><b>${esc(a.nom)}</b><small>${esc(a.cat || '')}${a.date ? ' · ' + esc(L.fmtDate(a.date)) : ''} → ${esc(L.fmtDate(L.dateAnneeSuivante(a.date)))}</small></div>
+      <button class="btn sec sm" data-rec="${a.id}">Reconduire</button></div>`).join('') : '<div class="empty"><b>Rien à reconduire pour le moment</b>Les activités et événements datés apparaîtront ici une fois leur date passée.</div>'}
+    <div class="quick" style="margin-top:14px"><button class="btn ghost" data-action="close">Fermer</button></div>`);
+    document.querySelectorAll('[data-rec]').forEach(b => { b.onclick = async () => {
+      const a = actDe(b.dataset.rec); if (!a) return;
+      await sauver('activites', L.reconduireActivite(a), `${a.nom} reconduite pour l'année suivante`); faites.add(a.id); dessiner();
+    }; });
+  };
+  dessiner();
+}
 function affiche() {
   const debut = aujourdhui(), fin = ajouterJours(debut, 7);
   const items = S.cache.activites.filter(a => a.date >= debut && a.date <= fin).sort((a, b) => a.date.localeCompare(b.date));
@@ -343,26 +361,51 @@ function affiche() {
 }
 
 /* ============ BILANS ============ */
+// Périodes prêtes à choisir (cahier § 21.8 : jour, semaine, mois, trimestre, année) ; « Personnalisée » laisse les deux dates telles quelles.
+function perioderPreset(cle, auj) {
+  const d = new Date(auj + 'T12:00:00'), an = d.getFullYear();
+  if (cle === 'jour') return { du: auj, au: auj };
+  if (cle === 'semaine') { const l = ajouterJours(auj, -((d.getDay() + 6) % 7)); return { du: l, au: ajouterJours(l, 6) }; }
+  if (cle === 'mois') return { du: `${an}-${String(d.getMonth() + 1).padStart(2, '0')}-01`, au: `${an}-${String(d.getMonth() + 1).padStart(2, '0')}-${new Date(an, d.getMonth() + 1, 0).getDate()}` };
+  if (cle === 'trimestre') { const t0 = Math.floor(d.getMonth() / 3) * 3; return { du: `${an}-${String(t0 + 1).padStart(2, '0')}-01`, au: `${an}-${String(t0 + 3).padStart(2, '0')}-${new Date(an, t0 + 3, 0).getDate()}` }; }
+  return { du: `${an}-01-01`, au: `${an}-12-31` };
+}
+function statTitres(du, au) {
+  const stA = L.statistiques(S.cache.seances, S.cache.seniors, S.cache.activites, { du, au });
+  if (!S.stat.comparer) return { st: stA, cmp: null, ecarts: null };
+  const anA = Number(du.slice(0, 4)), anC = S.stat.anComparee || anA - 1, decal = anC - anA;
+  const decaler = iso => `${Number(iso.slice(0, 4)) + decal}${iso.slice(4)}`;
+  const stC = L.statistiques(S.cache.seances, S.cache.seniors, S.cache.activites, { du: decaler(du), au: decaler(au) });
+  return { st: stA, cmp: { an: anC, st: stC }, ecarts: L.comparerStatistiques(stA, stC) };
+}
 export function bilans() {
-  const an = new Date().getFullYear();
-  const du = S.stat.du || `${an}-01-01`, au = S.stat.au || `${an}-12-31`;
-  const st = L.statistiques(S.cache.seances, S.cache.seniors, S.cache.activites, { du, au });
+  const anCour = new Date().getFullYear(), auj = aujourdhui();
+  const du = S.stat.du || `${anCour}-01-01`, au = S.stat.au || `${anCour}-12-31`;
+  const { st, cmp, ecarts } = statTitres(du, au);
   const mx = Math.max(1, ...Object.values(st.parCat)), mxm = Math.max(1, ...Object.values(st.parMois));
   const mois = Object.keys(st.parMois).sort();
+  const ec = c => ecarts && ecarts[c] ? `<small class="sub" style="display:block">vs ${cmp.an} : ${ecarts[c]}</small>` : '';
+  const anneesDispo = [...new Set([anCour, anCour - 1, anCour - 2, Number(du.slice(0, 4)) - 1])];
   return `<div class="top"><div><h1>Bilans</h1><p>Calculés à partir des appels validés. Une personne présente à 10 séances compte pour 1 personne et 10 participations.</p></div>
     <div class="quick noprint"><button class="btn sec" data-action="export-bilan">Exporter (Excel)</button><button class="btn sec" data-action="imprimer">Imprimer</button></div></div>
-  <div class="card noprint" style="margin-bottom:16px"><div class="two"><div class="field"><label for="b1">Du</label><input id="b1" type="date" value="${du}" data-change="periode"></div><div class="field"><label for="b2">Au</label><input id="b2" type="date" value="${au}" data-change="periode"></div></div></div>
-  <div class="grid tiles"><div class="tile"><span class="n">${st.personnesUniques}</span><span class="l">Personnes différentes</span></div>
-  <div class="tile"><span class="n">${st.participations}</span><span class="l">Participations</span></div>
-  <div class="tile"><span class="n">${st.tauxPresence == null ? '—' : st.tauxPresence + ' %'}</span><span class="l">Taux de présence</span></div>
-  <div class="tile"><span class="n">${st.seances}</span><span class="l">Séances</span></div></div>
-  ${st.seances ? `<div class="cols"><div class="card"><h2>Participations par mois</h2><div class="vbars">${mois.map(k => `<div><em>${st.parMois[k]}</em><i style="height:${st.parMois[k] / mxm * 80}%"></i><span>${MOIS[Number(k.slice(5)) - 1].slice(0, 4)}.</span></div>`).join('')}</div></div>
+  <div class="card noprint" style="margin-bottom:16px">
+    <div class="filters" aria-label="Période"><button data-action="periode-preset" data-v="jour" aria-pressed="false">Aujourd'hui</button><button data-action="periode-preset" data-v="semaine" aria-pressed="false">Cette semaine</button><button data-action="periode-preset" data-v="mois" aria-pressed="false">Ce mois</button><button data-action="periode-preset" data-v="trimestre" aria-pressed="false">Ce trimestre</button><button data-action="periode-preset" data-v="annee" aria-pressed="false">Cette année</button></div>
+    <div class="two" style="margin-top:10px"><div class="field"><label for="b1">Du</label><input id="b1" type="date" value="${du}" data-change="periode"></div><div class="field"><label for="b2">Au</label><input id="b2" type="date" value="${au}" data-change="periode"></div></div>
+    <label class="chk" style="margin-top:10px"><input type="checkbox" id="b-cmp" ${S.stat.comparer ? 'checked' : ''} data-change="comparer"> Comparer avec une autre année</label>
+    ${S.stat.comparer ? `<div class="field" style="max-width:220px;margin-top:6px"><label for="b-an">Année de comparaison</label><select id="b-an" data-change="an-comparee">${anneesDispo.filter(a => a !== Number(du.slice(0, 4))).map(a => `<option value="${a}" ${Number(S.stat.anComparee) === a ? 'selected' : ''}>${a}</option>`).join('')}</select></div>` : ''}
+  </div>
+  <div class="grid tiles"><div class="tile"><span class="n">${st.personnesUniques}</span><span class="l">Personnes différentes</span>${ec('personnesUniques')}</div>
+  <div class="tile"><span class="n">${st.participations}</span><span class="l">Participations</span>${ec('participations')}</div>
+  <div class="tile"><span class="n">${st.tauxPresence == null ? '—' : st.tauxPresence + ' %'}</span><span class="l">Taux de présence</span>${ec('tauxPresence')}</div>
+  <div class="tile"><span class="n">${st.seances}</span><span class="l">Séances</span>${ec('seances')}</div></div>
+  ${st.seances ? `<h2 style="margin:20px 0 8px">Animations</h2><div class="cols"><div class="card"><h2>Participations par mois</h2><div class="vbars">${mois.map(k => `<div><em>${st.parMois[k]}</em><i style="height:${st.parMois[k] / mxm * 80}%"></i><span>${MOIS[Number(k.slice(5)) - 1].slice(0, 4)}.</span></div>`).join('')}</div></div>
   <div class="card"><h2>Par catégorie</h2>${Object.entries(st.parCat).sort((x, y) => y[1] - x[1]).map(([c, n]) => `<div class="stat-row"><span class="lab">${esc(c)}</span><div class="bar"><i style="width:${n / mx * 100}%"></i></div><span class="v">${n}</span></div>`).join('')}</div></div>
-  <div class="cols"><div class="card"><h2>Public</h2>
+  <h2 style="margin:20px 0 8px">Publics</h2><div class="cols"><div class="card"><h2>Public</h2>
     <div class="stat-row"><span class="lab">Femmes</span><span class="v">${st.publics.femmes}</span></div><div class="stat-row"><span class="lab">Hommes</span><span class="v">${st.publics.hommes}</span></div>${st.publics.autre ? `<div class="stat-row"><span class="lab">Sexe non précisé</span><span class="v">${st.publics.autre}</span></div>` : ''}
     <div class="stat-row"><span class="lab">Adhérent·es</span><span class="v">${st.publics.adherents}</span></div><div class="stat-row"><span class="lab">Résident·es</span><span class="v">${st.publics.residents}</span></div></div>
   <div class="card"><h2>Tranches d'âge</h2>${Object.entries(st.tranches).map(([t, n]) => `<div class="stat-row"><span class="lab">${esc(t)}</span><span class="v">${n}</span></div>`).join('') || '<p class="sub">Pas de date de naissance renseignée.</p>'}
-    <p class="sub">Absences non excusées : ${st.absents} · excusées : ${st.excuses} · désistements : ${st.desistements}</p></div></div>`
+    <p class="sub">Absences non excusées : ${st.absents}${ec('absents')} · excusées : ${st.excuses}${ec('excuses')} · désistements : ${st.desistements}${ec('desistements')}</p></div></div>
+  <p class="sub noprint" style="margin-top:10px">Portage de repas, budgets, régie, partenaires et accueils ont leurs propres bilans détaillés dans leurs écrans respectifs (chiffres de l'année, comparés à l'année précédente).</p>`
   : '<div class="card"><div class="empty"><b>Aucune séance validée sur cette période</b>Faites l\'appel dans une activité puis validez-le : les chiffres apparaissent ici.</div></div>'}`;
 }
 function exportBilan() {
@@ -392,6 +435,12 @@ export const actions = {
   programme: () => programme(),
   affiche: () => affiche(),
   'export-bilan': () => exportBilan(),
-  imprimer: () => window.print()
+  imprimer: () => window.print(),
+  'periode-preset': el => { const { du, au } = perioderPreset(el.dataset.v, aujourdhui()); S.stat.du = du; S.stat.au = au; render(); },
+  'preparer-annee': () => preparerAnnee()
 };
-export const changes = { 'tache-done': tacheDone, periode: () => { S.stat.du = $('#b1').value; S.stat.au = $('#b2').value; render(); } };
+export const changes = {
+  'tache-done': tacheDone, periode: () => { S.stat.du = $('#b1').value; S.stat.au = $('#b2').value; render(); },
+  comparer: el => { S.stat.comparer = el.checked; render(); },
+  'an-comparee': el => { S.stat.anComparee = Number(el.value); render(); }
+};

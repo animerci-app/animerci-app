@@ -332,6 +332,36 @@ export function memeAdresse(adresse, residence) {
 
 /** Fréquences proposées pour une activité (la saisie reste libre : « 1 semaine sur 2 », « 4 fois par an »…). */
 export const FREQUENCES_ACTIVITE = ['Toutes les semaines', 'Toutes les 2 semaines', 'Toutes les 3 semaines', '1 fois par mois', '1 fois tous les 2 mois', '4 fois par an', '2 fois par an', '1 fois par an', 'Fréquence variable'];
+/** Ordre alphabétique français (accents inclus) d'un texte quelconque (nom d'activité, catégorie…). */
+export const comparerTexte = (a, b) => String(a || '').localeCompare(String(b || ''), 'fr');
+
+/* ---------- Lot G (v1.23.0) : bilans enrichis, comparaison entre deux années, « Préparer mon année » ---------- */
+// Même mois et jour, un an plus tard (29 février d'une année non bissextile → 28 février, pour rester dans le même mois).
+export function dateAnneeSuivante(iso) {
+  if (!iso) return '';
+  const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
+  const an = y + 1, dansLeMois = new Date(an, m, 0).getDate(); // dernier jour de ce mois l'année suivante
+  return `${an}-${String(m).padStart(2, '0')}-${String(Math.min(d, dansLeMois)).padStart(2, '0')}`;
+}
+// Activités et événements datés dont la date est déjà passée dans l'année en cours : candidats à reconduire pour l'année suivante.
+// Une activité régulière sans date (saisie une fois pour toutes) n'a rien à reconduire : elle continue telle quelle.
+export function activitesAReconduire(activites, auj) {
+  const an = auj.slice(0, 4);
+  return (activites || []).filter(a => a.date && a.date.slice(0, 4) === an && a.date < auj).sort((x, y) => x.date.localeCompare(y.date));
+}
+// Copie d'une activité pour l'année suivante : mêmes réglages, date reportée d'un an, sans inscriptions ni appels ni fiches.
+export function reconduireActivite(a) {
+  const { id, ...reste } = a;
+  return { ...reste, date: dateAnneeSuivante(a.date) };
+}
+const evolutionBilan = (a, b) => (b === undefined || b === null ? '' : a === b ? 'stable' : `${a > b ? '+' : '−'}${Math.abs(a - b)}`);
+/** Comparaison des statistiques (cahier § 21) entre deux périodes (ex. une année et la précédente). */
+export function comparerStatistiques(actuel, precedent) {
+  const champs = ['personnesUniques', 'participations', 'seances', 'absents', 'excuses', 'desistements'];
+  const ecarts = {}; for (const c of champs) ecarts[c] = evolutionBilan(actuel[c], precedent ? precedent[c] : undefined);
+  ecarts.tauxPresence = precedent && precedent.tauxPresence != null && actuel.tauxPresence != null ? evolutionBilan(actuel.tauxPresence, precedent.tauxPresence) : '';
+  return ecarts;
+}
 
 /* ---------- Lot K (v1.14.0) : tâches, confirmations, programme, alertes ---------- */
 export const STATUTS_TACHE = { 'a-faire': 'À faire', 'en-cours': 'En cours', 'en-attente': 'En attente' };

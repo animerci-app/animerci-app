@@ -2,7 +2,7 @@
 import * as L from './logic.js';
 import { store } from './store.js';
 import { champListe, lireChamp } from './annuaire.js';
-import { champRecherche, itemPersonne, AIDE_PERSONNE } from './recherche.js';
+import { champRecherche, itemPersonne, itemActivite, AIDE_PERSONNE } from './recherche.js';
 import { S, pret, chargement, $, esc, aujourdhui, initiales, dateLongue, go, render, toast, modal, closeModal, confirmer, copier, sauver, mettreCorbeille, seniorDe, actDe, validees, peutAdmin } from './ui.js';
 import { ficheId, classeCat } from './views-core.js';
 import { emargementBouton } from './securite.js';
@@ -15,21 +15,40 @@ const retenusDe = id => inscriptionsDe(id).filter(i => RETENUS.includes(i.statut
 const mesActivites = () => peutAdmin() ? S.cache.activites : S.cache.activites.filter(a => (S.user.activites || []).includes(a.id));
 
 /* ============ LISTE ============ */
+// Une carte par activité (places prises côté serveur pour l'administratrice ; inscriptions déjà chargées pour l'intervenant·e)
+function carteActivite(a, admin) {
+  const cp = admin ? (S.compteurs[a.id] || { r: 0, att: 0 }) : null, enCours = admin && !S.compteurs[a.id];
+  const r = cp ? cp.r : retenusDe(a.id).length, att = cp ? cp.att : inscriptionsDe(a.id).filter(i => i.statut === 'attente').length, full = r >= a.cap, pct = Math.min(100, Math.round(r / a.cap * 100));
+  return `<button class="act" data-action="open-act" data-id="${a.id}">
+    <div style="display:flex;gap:12px;align-items:center"><span class="cat ${classeCat(a.cat)}">${esc((a.cat || '?')[0])}</span><div><h3>${esc(a.nom)}</h3><div class="meta">${esc(a.jour || '')}${a.date ? ' · ' + L.fmtDate(a.date) : ''}${a.frequence ? `<br>${esc(a.frequence)}` : ''}</div></div></div>
+    <div class="bar ${full ? 'full' : ''}"><i style="width:${pct}%"></i></div>
+    <div style="display:flex;justify-content:space-between;align-items:center"><span><b>${enCours ? '…' : r}</b> / ${a.cap} places</span>
+    ${enCours ? '' : att ? `<span class="pill p-warn">${att} en attente</span>` : full ? '<span class="pill p-crit">Complet</span>' : `<span class="pill p-ok">${a.cap - r} libres</span>`}</div></button>`;
+}
+// Regroupement visuel par catégorie, catégories triées par ordre alphabétique (accents français) ; sans catégorie (ou catégorie inconnue) : « Autres », toujours en dernier.
+// À l'intérieur de chaque catégorie, les activités sont elles aussi triées par ordre alphabétique de leur nom.
+function groupesParCategorie(rows) {
+  const connues = new Set(P('listes.categories') || []);
+  const groupes = new Map(), autres = [];
+  for (const a of rows) {
+    if (a.cat && connues.has(a.cat)) { if (!groupes.has(a.cat)) groupes.set(a.cat, []); groupes.get(a.cat).push(a); }
+    else autres.push(a);
+  }
+  const cles = [...groupes.keys()].sort(L.comparerTexte);
+  const blocs = cles.map(c => [c, groupes.get(c).slice().sort((x, y) => L.comparerTexte(x.nom, y.nom))]);
+  if (autres.length) blocs.push(['Autres', autres.slice().sort((x, y) => L.comparerTexte(x.nom, y.nom))]);
+  return blocs;
+}
 export function activites() {
   const admin = peutAdmin();
-  const rows = mesActivites().sort((a, b) => (a.date || '9').localeCompare(b.date || '9'));
+  const rows = mesActivites();
+  const blocs = groupesParCategorie(rows);
   return `<div class="top"><div><h1>${admin ? 'Activités' : 'Mes activités'}</h1><p>Touchez une activité pour gérer les inscriptions et faire l'appel.</p></div>
     ${admin ? '<button class="btn" data-action="act-form">+ Nouvelle activité</button><button class="btn sec" data-action="importer" data-cible="activites">Importer une liste</button>' : ''}</div>
-  ${rows.length ? `<div class="grid acts">${rows.map(a => {
-    // administratrice : places comptées côté serveur (compterPlaces dans app.js) ; intervenante : ses inscriptions déjà chargées
-    const cp = admin ? (S.compteurs[a.id] || { r: 0, att: 0 }) : null, enCours = admin && !S.compteurs[a.id];
-    const r = cp ? cp.r : retenusDe(a.id).length, att = cp ? cp.att : inscriptionsDe(a.id).filter(i => i.statut === 'attente').length, full = r >= a.cap, pct = Math.min(100, Math.round(r / a.cap * 100));
-    return `<button class="act" data-action="open-act" data-id="${a.id}">
-      <div style="display:flex;gap:12px;align-items:center"><span class="cat ${classeCat(a.cat)}">${esc((a.cat || '?')[0])}</span><div><h3>${esc(a.nom)}</h3><div class="meta">${esc(a.jour || '')}${a.date ? ' · ' + L.fmtDate(a.date) : ''}${a.frequence ? `<br>${esc(a.frequence)}` : ''}</div></div></div>
-      <div class="bar ${full ? 'full' : ''}"><i style="width:${pct}%"></i></div>
-      <div style="display:flex;justify-content:space-between;align-items:center"><span><b>${enCours ? '…' : r}</b> / ${a.cap} places</span>
-      ${enCours ? '' : att ? `<span class="pill p-warn">${att} en attente</span>` : full ? '<span class="pill p-crit">Complet</span>' : `<span class="pill p-ok">${a.cap - r} libres</span>`}</div></button>`;
-  }).join('')}</div>` : `<div class="card"><div class="empty"><b>Aucune activité</b>${admin ? 'Créez la première avec le bouton en haut.' : 'Aucune activité ne vous est attribuée pour le moment.'}</div></div>`}`;
+  ${rows.length ? champRecherche({ id: 'rech-act', label: 'Chercher une activité', texte: '', aide: 'Tapez un nom, un jour ou un horaire ; choisissez une suggestion (clic ou touche Entrée) pour ouvrir la fiche.', mode: 'action', recents: 'activites', placeholder: 'Chercher une activité (nom, jour, horaire…)…',
+    items: () => rows.map(itemActivite), onChoose: o => { if (o) { const el = $('#rech-act'); if (el) el.value = ''; go('activite', { actId: o.id }); } } }) : ''}
+  ${rows.length ? blocs.map(([cat, liste]) => `<h2 class="cat-titre" style="margin:18px 0 8px">${esc(cat)}</h2><div class="grid acts">${liste.map(a => carteActivite(a, admin)).join('')}</div>`).join('')
+    : `<div class="card"><div class="empty"><b>Aucune activité</b>${admin ? 'Créez la première avec le bouton en haut.' : 'Aucune activité ne vous est attribuée pour le moment.'}</div></div>`}`;
 }
 
 // modele : activité à copier (sans ses inscriptions ni ses appels) ; la date est à saisir de nouveau
