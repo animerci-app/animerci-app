@@ -12,6 +12,7 @@ rules_version = '2';
 //                   Sans case cochée, ces rôles gardent leurs droits d'origine (planning ; activités et appels pour les intervenant·es).
 //  - accueils (v1.20.0) : jeunes adultes (bourse), services civiques, stagiaires : administratrice uniquement
 //  - budgets et régie (v1.21.0, accès « budgets » à cocher) : l'administratrice, et les intervenant·es et bénévoles dont l'accès est coché, lisent et saisissent les dépenses et les opérations de régie ; seule l'administratrice supprime et règle le montant initial de chaque budget
+//  - questionnaires et voyages (v1.22.0) : questionnaires et sondages, réponses reçues, bibliothèque des voyages et sorties : administratrice uniquement (aucun accès équipe)
 // Les comptes et leurs rôles (collection "users") sont créés dans la console Firebase.
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -142,6 +143,11 @@ service cloud.firestore {
       allow read, create, update: if equipeBudgets();
       allow delete: if estAdmin();
     }
+
+    // Questionnaires et sondages, réponses reçues, bibliothèque des voyages et sorties (v1.22.0) : administratrice uniquement, aucun accès équipe.
+    match /questionnaires/{id} { allow read, write: if estAdmin(); }
+    match /reponsesQuestionnaire/{id} { allow read, write: if estAdmin(); }
+    match /voyages/{id} { allow read, write: if estAdmin(); }
 
     // Paramètres de l'outil (noms, listes, durées, modules) : lisibles par tout rôle connu, modifiables par l'admin seule
     match /parametres/{id} {

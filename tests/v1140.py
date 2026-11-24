@@ -1,5 +1,6 @@
 # v1.14.0 (lot K) : compte sur téléphone, logo, fiche d'activité, confirmations, place libérée, remplaçant, jour J, tâches, planning 3 mois, programme, alertes
 from playwright.sync_api import sync_playwright
+import re
 errs=[]; fails=[]
 def check(c,msg):
     print(('ok - ' if c else 'ECHEC - ')+msg)
@@ -94,7 +95,7 @@ with sync_playwright() as p:
     m.goto('http://localhost:8765/index.html'); m.wait_for_selector('text=Essayer comme administratrice'); m.click('text=Essayer comme administratrice'); m.wait_for_selector('.nav-compte')
     check(m.locator('.nav-compte').is_visible() and not m.locator('.side .foot').is_visible(),'téléphone : bouton Compte visible, pied de menu masqué')
     m.click('.nav-compte'); m.wait_for_selector('.modal button:has-text("Se déconnecter")')
-    check('Version 1.20.0' in m.inner_text('.modal') or 'version 1.20.0' in m.inner_text('.modal'),'téléphone : fenêtre Compte avec le numéro de version')
+    check(re.search(r'[Vv]ersion \d+\.\d+\.\d+', m.inner_text('.modal')) is not None,'téléphone : fenêtre Compte avec le numéro de version')
     m.click('.modal button:has-text("Se déconnecter")'); m.wait_for_selector('text=Essayer comme administratrice')
     check(m.locator('.modal').count()==0,'téléphone : déconnexion et fenêtre fermée')
     # intervenante : Compte aussi

@@ -813,3 +813,83 @@ t('lot D : les données de démonstration sont cohérentes', () => {
   for (const dep of d.depenses) assert.equal(L.erreurDepense(dep, L.DEFAUTS_LISTES_BUDGETS || ['Budget ville', 'Budget résidence', 'Forfait autonomie']), '', dep.id);
   for (const op of d.regie) assert.equal(L.erreurOperationRegie(op, ['Chèque à transmettre au Trésor public', 'Dépôt d\'espèces', 'Document à préparer', 'Suivi mensuel', 'Autre opération']), '', op.id);
 });
+
+t('lot J : questionnaires — validation, résultats compilés, tableaux d\'export', () => {
+  const themes = ['Satisfaction des animations', 'Sorties'];
+  const q = { titre: 'Satisfaction', theme: 'Satisfaction des animations', questions: [
+    { id: 'q1', texte: 'Satisfait·e ?', type: 'choix', options: ['Oui', 'Non'] },
+    { id: 'q2', texte: 'Remarques', type: 'libre' }
+  ] };
+  assert.equal(L.erreurQuestionnaire(q, themes), '');
+  assert.ok(L.erreurQuestionnaire({ ...q, titre: '' }, themes));
+  assert.ok(L.erreurQuestionnaire({ ...q, theme: 'Inconnu' }, themes));
+  assert.ok(L.erreurQuestionnaire({ ...q, questions: [] }, themes), 'au moins une question');
+  assert.ok(L.erreurQuestionnaire({ ...q, questions: [{ id: 'q1', texte: 'X', type: 'choix', options: ['Seul choix'] }] }, themes), 'au moins deux choix pour une question à choix');
+
+  assert.equal(L.erreurReponseQuestionnaire({ dateRecue: '2026-03-01', diffusion: 'papier' }), '');
+  assert.ok(L.erreurReponseQuestionnaire({ dateRecue: '', diffusion: 'papier' }));
+  assert.ok(L.erreurReponseQuestionnaire({ dateRecue: '2026-03-01', diffusion: 'inconnu' }));
+
+  q.id = 'qid';
+  const reponses = [
+    { id: 'r1', questionnaireId: 'qid', dateRecue: '2026-03-01', diffusion: 'papier', reponses: { q1: 'Oui', q2: 'Très bien' } },
+    { id: 'r2', questionnaireId: 'qid', dateRecue: '2026-03-02', diffusion: 'email', reponses: { q1: 'Oui' } },
+    { id: 'r3', questionnaireId: 'qid', dateRecue: '2026-03-03', diffusion: 'oral', reponses: { q1: 'Non', q2: 'Horaires à revoir' } },
+    { id: 'r4', questionnaireId: 'autre', dateRecue: '2026-03-04', diffusion: 'papier', reponses: { q1: 'Non' } } // autre questionnaire : ignoré
+  ];
+  const res = L.resultatsQuestionnaire(q, reponses);
+  assert.equal(res[0].nb, 3);
+  assert.equal(res[0].options.find(o => o.option === 'Oui').nb, 2);
+  assert.equal(res[0].options.find(o => o.option === 'Oui').pourcent, 67);
+  assert.equal(res[0].options.find(o => o.option === 'Non').pourcent, 33);
+  assert.equal(res[1].type, 'libre'); assert.equal(res[1].nb, 2); assert.deepEqual(res[1].textes, ['Très bien', 'Horaires à revoir']);
+
+  const TQ = L.tableauxQuestionnaire(q, reponses);
+  assert.equal(TQ.length, 2);
+  assert.equal(TQ[1].rows.length, 3, 'une ligne par réponse reçue (sans compter l\'autre questionnaire)');
+  assert.ok(!JSON.stringify(TQ).toLowerCase().includes('santé'));
+});
+
+t('lot J : voyages et sorties — validation, comparaison annuelle, tableaux d\'export', () => {
+  assert.equal(L.erreurVoyage({ destination: 'Bruxelles', date: '2026-03-01', cout: 100 }), '');
+  assert.ok(L.erreurVoyage({ destination: '', date: '2026-03-01' }));
+  assert.ok(L.erreurVoyage({ destination: 'Bruxelles', date: '' }));
+  assert.ok(L.erreurVoyage({ destination: 'Bruxelles', date: '2026-03-01', cout: -5 }));
+
+  const voyages = [
+    { id: 'v1', destination: 'Bruxelles', date: '2026-01-10', cout: 1200, participants: 40 },
+    { id: 'v2', destination: 'Lille', date: '2026-06-10', cout: 300, participants: 30 },
+    { id: 'v3', destination: 'Côte d\'Opale', date: '2025-06-12', cout: 950, participants: 38 }
+  ];
+  const comp = L.comparaisonVoyages(voyages);
+  assert.equal(comp.length, 2);
+  const c2026 = comp.find(e => e.an === '2026');
+  assert.equal(c2026.nb, 2); assert.equal(c2026.cout, 1500); assert.equal(c2026.participants, 70);
+  assert.equal(c2026.coutMoyenParticipant, Math.round((1500 / 70) * 100) / 100);
+  const c2025 = comp.find(e => e.an === '2025');
+  assert.equal(c2025.nb, 1); assert.equal(c2025.cout, 950);
+
+  const TV = L.tableauxVoyages(voyages);
+  assert.equal(TV.length, 2);
+  assert.equal(TV[0].rows.length, 3);
+  assert.equal(TV[1].rows.length, 2, 'une ligne par année dans la comparaison');
+  assert.ok(!JSON.stringify(TV).toLowerCase().includes('santé'));
+});
+
+t('lot J : chargement à la demande (questionnaires et voyages, administratrice seule)', () => {
+  assert.equal(cols({ role: 'admin', view: 'questionnaires' }).filter(c => c.startsWith('questionnaires')).length, 1);
+  assert.equal(cols({ role: 'admin', view: 'questionnaires', questActId: 'q1' }).filter(c => c.startsWith('reponsesQuestionnaire')).length, 1);
+  assert.equal(cols({ role: 'admin', view: 'questionnaires' }).filter(c => c.startsWith('reponsesQuestionnaire')).length, 0, 'pas de fiche ouverte : pas de lecture des réponses');
+  assert.equal(cols({ role: 'admin', view: 'voyages' }).filter(c => c.startsWith('voyages')).length, 1);
+  assert.equal(besoins({ ...base, role: 'intervenant', view: 'questionnaires', mesActivites: [], acces: {} }).filter(b => b.col === 'questionnaires').length, 0, 'intervenant·e : aucun accès');
+  assert.equal(besoins({ ...base, role: 'benevole', view: 'voyages', acces: {} }).filter(b => b.col === 'voyages').length, 0, 'bénévole : aucun accès');
+});
+
+t('lot J : les données de démonstration sont cohérentes', () => {
+  const d = donneesDemo();
+  assert.equal(d.questionnaires.length, 1); assert.ok(d.reponsesQuestionnaire.length >= 2); assert.equal(d.voyages.length, 2);
+  const themes = ['Satisfaction des animations', 'Attentes des seniors', 'Portage de repas', 'Sorties', 'Banquet', 'Programme annuel', 'Événements'];
+  for (const q of d.questionnaires) assert.equal(L.erreurQuestionnaire(q, themes), '', q.id);
+  for (const r of d.reponsesQuestionnaire) assert.equal(L.erreurReponseQuestionnaire(r), '', r.id);
+  for (const v of d.voyages) assert.equal(L.erreurVoyage(v), '', v.id);
+});

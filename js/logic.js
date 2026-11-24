@@ -1230,3 +1230,81 @@ export function tableauxRegie(regie, an) {
   return [{ nom: `Régie ${an}`, titre: `Opérations de régie de l'année ${an}`, cols: ['Date', 'Type', 'Objet', 'Montant', 'Mode de règlement', 'Statut', 'Échéance', 'Saisi par'],
     rows: lignes.map(o => [fmtDate(o.date), o.type || '', o.objet || '', o.montant === '' || o.montant == null ? '' : fmtMontant(num(o.montant)), o.mode || '', LIB_STATUT_REGIE[o.statut] || o.statut || '', fmtDate(o.echeance), o.par || '']) }];
 }
+
+/* ---------- Lot J (v1.22.0) : Questionnaires et sondages, Bibliothèque des voyages et sorties — administratrice seule ---------- */
+
+/** Message d'erreur pour un questionnaire (titre, thème, au moins une question avec un texte). */
+export function erreurQuestionnaire({ titre, theme, questions }, themes = []) {
+  if (!String(titre || '').trim()) return 'Indiquez un titre.';
+  if (!themes.includes(theme)) return 'Choisissez un thème.';
+  const qs = (questions || []).filter(q => String(q.texte || '').trim());
+  if (!qs.length) return 'Ajoutez au moins une question.';
+  for (const q of qs) if (q.type === 'choix' && (q.options || []).filter(o => String(o || '').trim()).length < 2) return `La question « ${q.texte} » doit proposer au moins deux choix.`;
+  return '';
+}
+/** Message d'erreur pour une réponse reçue à un questionnaire (date, mode de diffusion). */
+export function erreurReponseQuestionnaire({ dateRecue, diffusion }) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateRecue || '')) return 'Indiquez la date de réception.';
+  if (!['papier', 'email', 'oral'].includes(diffusion)) return 'Choisissez comment la réponse a été reçue.';
+  return '';
+}
+const LIB_DIFFUSION = { papier: 'Papier', email: 'E-mail', oral: 'Orale' };
+export const LIBELLE_DIFFUSION = LIB_DIFFUSION;
+/** Compilation des résultats d'un questionnaire : pour chaque question à choix, le compte et le pourcentage par option ; pour une question libre, la liste des réponses. */
+export function resultatsQuestionnaire(questionnaire, reponses) {
+  const rs = (reponses || []).filter(r => r.questionnaireId === questionnaire.id);
+  return (questionnaire.questions || []).map(q => {
+    if (q.type === 'choix') {
+      const comptes = {}; (q.options || []).forEach(o => { comptes[o] = 0; });
+      let nb = 0;
+      for (const r of rs) { const v = (r.reponses || {})[q.id]; if (v && v in comptes) { comptes[v]++; nb++; } }
+      return { question: q.texte, type: 'choix', nb, options: (q.options || []).map(o => ({ option: o, nb: comptes[o] || 0, pourcent: nb ? Math.round((comptes[o] || 0) * 100 / nb) : 0 })) };
+    }
+    const textes = rs.map(r => (r.reponses || {})[q.id]).filter(v => String(v || '').trim());
+    return { question: q.texte, type: 'libre', nb: textes.length, textes };
+  });
+}
+/** Tableaux d'export (Excel, PDF) pour un questionnaire : résultats compilés puis réponses reçues. */
+export function tableauxQuestionnaire(questionnaire, reponses) {
+  const rs = (reponses || []).filter(r => r.questionnaireId === questionnaire.id).sort((a, b) => (a.dateRecue || '').localeCompare(b.dateRecue || ''));
+  const res = resultatsQuestionnaire(questionnaire, reponses);
+  const rowsRes = [];
+  res.forEach(r => {
+    if (r.type === 'choix') r.options.forEach(o => rowsRes.push([r.question, o.option, o.nb, o.pourcent + ' %']));
+    else rowsRes.push([r.question, `${r.nb} réponse${r.nb > 1 ? 's' : ''} en texte libre (voir onglet Réponses)`, '', '']);
+  });
+  return [
+    { nom: 'Résultats', titre: `Résultats compilés — ${questionnaire.titre}`, cols: ['Question', 'Choix', 'Nombre', 'Pourcentage'], rows: rowsRes },
+    { nom: 'Réponses', titre: `Réponses reçues — ${questionnaire.titre} (${rs.length})`, cols: ['Date reçue', 'Reçue par', ...(questionnaire.questions || []).map(q => q.texte)],
+      rows: rs.map(r => [fmtDate(r.dateRecue), LIB_DIFFUSION[r.diffusion] || r.diffusion || '', ...(questionnaire.questions || []).map(q => (r.reponses || {})[q.id] || '')]) }
+  ];
+}
+
+/** Message d'erreur pour un voyage ou une sortie de la bibliothèque. */
+export function erreurVoyage({ destination, date, cout }) {
+  if (!String(destination || '').trim()) return 'Indiquez la destination.';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) return 'Indiquez la date.';
+  if (cout !== '' && cout != null && (!isFinite(Number(cout)) || Number(cout) < 0)) return 'Le coût doit être un nombre positif ou nul.';
+  return '';
+}
+/** Comparaison d'une année sur l'autre : nombre de sorties, coût total, coût moyen par participant. */
+export function comparaisonVoyages(voyages) {
+  const m = new Map();
+  for (const v of voyages || []) {
+    const an = (v.date || '').slice(0, 4); if (!an) continue;
+    const e = m.get(an) || { an, nb: 0, cout: 0, participants: 0 };
+    e.nb++; e.cout += num(v.cout); e.participants += num(v.participants); m.set(an, e);
+  }
+  return [...m.values()].sort((a, b) => b.an.localeCompare(a.an)).map(e => ({ ...e, coutMoyenParticipant: e.participants > 0 ? Math.round((e.cout / e.participants) * 100) / 100 : 0 }));
+}
+/** Tableaux d'export (Excel, PDF) pour la bibliothèque des voyages et sorties. */
+export function tableauxVoyages(voyages) {
+  const lignes = [...(voyages || [])].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  const comp = comparaisonVoyages(voyages);
+  return [
+    { nom: 'Sorties', titre: 'Bibliothèque des voyages et sorties', cols: ['Date', 'Destination', 'Programme', 'Prestataire', 'Transporteur', 'Participants', 'Coût', 'Budget', 'Document', 'Retours'],
+      rows: lignes.map(v => [fmtDate(v.date), v.destination || '', v.programme || '', v.prestataireNom || '', v.transporteurNom || '', v.participants || '', v.cout === '' || v.cout == null ? '' : fmtMontant(num(v.cout)), v.budget || '', v.documentOu || '', v.retours || '']) },
+    { nom: 'Comparaison annuelle', titre: 'Comparaison d\'une année sur l\'autre', cols: ['Année', 'Nombre de sorties', 'Coût total', 'Coût moyen par participant'],
+      rows: comp.map(e => [e.an, e.nb, fmtMontant(e.cout), fmtMontant(e.coutMoyenParticipant)]) }
+  ];
+}

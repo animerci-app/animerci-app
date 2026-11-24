@@ -13,7 +13,7 @@ with sync_playwright() as p:
     check(pg.locator('.demo-banner').count()==1,'bandeau démonstration affiché')
     pg.click('text=Essayer comme administratrice'); pg.wait_for_selector('text=Que voulez-vous faire')
     check('Responsable' in pg.inner_text('h1'),'accueil admin')
-    check(pg.locator('nav.side .nav-btn[data-v]').count()==16,'16 entrées de menu pour l\'administratrice (lot D : Budgets, Régie)')
+    check(pg.locator('nav.side .nav-btn[data-v]').count()==18,'18 entrées de menu pour l\'administratrice (lot J : Questionnaires, Voyages)')
     # Personnes : ajout
     pg.click('nav.side [data-v=seniors]'); pg.wait_for_selector('#liste .cand')
     n0=pg.locator('#liste .cand').count()

@@ -4,7 +4,7 @@
 // l'information est toujours écrite en toutes lettres (« Oui », « Présent·e »…), jamais portée par une couleur.
 import { store, lecturesDuJour, MODE_REEL } from './store.js';
 import { S, $, esc, toast, patienter, confirmer, aujourdhui } from './ui.js';
-import { STATUTS_PRESENCE, lieuDeVie, libelleFrequence, TYPES_ECHANGE, STATUTS_CONVENTION, tableauxMateriel, tableauxSuiviPortage, tableauxAccueils, telephones, prochesDe, tableauxAdhesions, tableauxBudgets, tableauxRegie } from './logic.js';
+import { STATUTS_PRESENCE, lieuDeVie, libelleFrequence, TYPES_ECHANGE, STATUTS_CONVENTION, tableauxMateriel, tableauxSuiviPortage, tableauxAccueils, telephones, prochesDe, tableauxAdhesions, tableauxBudgets, tableauxRegie, tableauxVoyages, LIBELLE_DIFFUSION } from './logic.js';
 import { VERSION } from './version.js';
 import { P, moduleActif } from './parametres.js';
 
@@ -19,7 +19,7 @@ const fr = d => (d && /^\d{4}-\d{2}-\d{2}/.test(d) ? d.slice(8, 10) + '/' + d.sl
 // Données complètes pour une sauvegarde : lues directement dans la base (l'écran, lui, ne charge que ce qu'il affiche).
 let SAUV = null;
 async function lireTout() {
-  const T = {}, cols = ['seniors', 'activites', 'inscriptions', 'seances', 'fiches', 'taches', 'contacts', 'echanges', 'conventions', 'materiel', 'emprunts', 'mouvements', 'portage', 'portageEchanges', 'accueils', 'depenses', 'regie', 'users', 'parametres'];
+  const T = {}, cols = ['seniors', 'activites', 'inscriptions', 'seances', 'fiches', 'taches', 'contacts', 'echanges', 'conventions', 'materiel', 'emprunts', 'mouvements', 'portage', 'portageEchanges', 'accueils', 'depenses', 'regie', 'questionnaires', 'reponsesQuestionnaire', 'voyages', 'users', 'parametres'];
   for (const c of cols) T[c] = await store.lire(c);
   T.corbeille = []; T.journal = [];
   return T;
@@ -62,6 +62,12 @@ export function tableaux({ fiches = false } = {}) {
     T.push(...tableauxBudgets(C.depenses || [], anBud, P('listes.budgets'), initiaux, aujourdhui()));
     T.push(...tableauxRegie(C.regie || [], anBud));
   }
+  if (moduleActif('questionnaires')) {
+    const rep = C.reponsesQuestionnaire || [];
+    T.push({ nom: 'Questionnaires', titre: 'Questionnaires et sondages', cols: ['Titre', 'Thème', 'Nombre de questions', 'Nombre de réponses reçues'],
+      rows: [...(C.questionnaires || [])].sort((a, b) => String(a.titre).localeCompare(String(b.titre), 'fr')).map(q => [q.titre || '', q.theme || '', (q.questions || []).length, rep.filter(r => r.questionnaireId === q.id).length]) });
+  }
+  if (moduleActif('voyages')) T.push(...tableauxVoyages(C.voyages || []));
   T.push({ nom: 'Inscriptions', titre: 'Inscriptions et listes d\'attente',
     cols: ['Activité', 'Personne', 'Situation', 'Date de la demande', 'Origine'],
     rows: [...C.inscriptions].sort((a, b) => (nomAct(a.activiteId) + nomSen(a.seniorId)).localeCompare(nomAct(b.activiteId) + nomSen(b.seniorId), 'fr'))
@@ -158,7 +164,7 @@ export function imprimer(html) {
 /* ---------- Fichier complet de restauration (JSON) ---------- */
 const COLS_SAUVEES = ['seniors', 'activites', 'inscriptions', 'seances', 'fiches', 'taches'];
 export function exportJson() {
-  return JSON.stringify({ application: 'animerci', version: 1, versionOutil: VERSION, date: new Date().toISOString(), donnees: Object.fromEntries(COLS_SAUVEES.map(c => [c, (SAUV || S.cache)[c]])), equipe: (SAUV || S.cache).users, parametres: (SAUV || S.cache).parametres, contacts: (SAUV || S.cache).contacts, echanges: (SAUV || S.cache).echanges || [], conventions: (SAUV || S.cache).conventions || [], materiel: (SAUV || S.cache).materiel || [], emprunts: (SAUV || S.cache).emprunts || [], mouvements: (SAUV || S.cache).mouvements || [], portage: (SAUV || S.cache).portage || [], portageEchanges: (SAUV || S.cache).portageEchanges || [], accueils: (SAUV || S.cache).accueils || [], depenses: (SAUV || S.cache).depenses || [], regie: (SAUV || S.cache).regie || [] }, null, 1);
+  return JSON.stringify({ application: 'animerci', version: 1, versionOutil: VERSION, date: new Date().toISOString(), donnees: Object.fromEntries(COLS_SAUVEES.map(c => [c, (SAUV || S.cache)[c]])), equipe: (SAUV || S.cache).users, parametres: (SAUV || S.cache).parametres, contacts: (SAUV || S.cache).contacts, echanges: (SAUV || S.cache).echanges || [], conventions: (SAUV || S.cache).conventions || [], materiel: (SAUV || S.cache).materiel || [], emprunts: (SAUV || S.cache).emprunts || [], mouvements: (SAUV || S.cache).mouvements || [], portage: (SAUV || S.cache).portage || [], portageEchanges: (SAUV || S.cache).portageEchanges || [], accueils: (SAUV || S.cache).accueils || [], depenses: (SAUV || S.cache).depenses || [], regie: (SAUV || S.cache).regie || [], questionnaires: (SAUV || S.cache).questionnaires || [], reponsesQuestionnaire: (SAUV || S.cache).reponsesQuestionnaire || [], voyages: (SAUV || S.cache).voyages || [] }, null, 1);
 }
 export function lireSauvegarde(texte) {
   let d; try { d = JSON.parse(texte); } catch (e) { throw new Error('Ce fichier n\'est pas une sauvegarde valide (illisible).'); }
@@ -182,6 +188,8 @@ export function lireSauvegarde(texte) {
   for (const c of ['materiel', 'emprunts', 'mouvements']) out[c] = Array.isArray(d[c]) ? d[c].filter(r => r && r.id && !/[\/]/.test(String(r.id))) : [];
   // facultatifs : absents des sauvegardes d'avant la 1.21.0
   for (const c of ['depenses', 'regie']) out[c] = Array.isArray(d[c]) ? d[c].filter(r => r && r.id && !/[\/]/.test(String(r.id))) : [];
+  // facultatifs : absents des sauvegardes d'avant la 1.22.0
+  for (const c of ['questionnaires', 'reponsesQuestionnaire', 'voyages']) out[c] = Array.isArray(d[c]) ? d[c].filter(r => r && r.id && !/[\/]/.test(String(r.id))) : [];
   return { donnees: out, date: d.date };
 }
 
@@ -205,7 +213,7 @@ function opts() { return { fiches: !!($('#sv-fiches') && $('#sv-fiches').checked
 function entete(o) {
   const n = SAUV || S.cache;
   return [`Sauvegarde faite le ${fr(aujourdhui())} par ${S.user.nom} (AniMerci, version ${VERSION}).`,
-    `Contenu : ${n.seniors.length} personnes, ${n.activites.length} activités, ${n.inscriptions.length} inscriptions, ${n.seances.length} séances${o.fiches ? `, ${n.fiches.length} fiches de sortie` : ' (fiches de sortie non incluses)'}, ${n.taches.length} tâches, ${(n.echanges || []).length} échanges avec les partenaires, ${(n.conventions || []).length} conventions, ${(n.materiel || []).length} articles de matériel, ${(n.emprunts || []).length} emprunts, ${(n.mouvements || []).length} mouvements de stock, ${(n.depenses || []).length} dépenses, ${(n.regie || []).length} opérations de régie.`,
+    `Contenu : ${n.seniors.length} personnes, ${n.activites.length} activités, ${n.inscriptions.length} inscriptions, ${n.seances.length} séances${o.fiches ? `, ${n.fiches.length} fiches de sortie` : ' (fiches de sortie non incluses)'}, ${n.taches.length} tâches, ${(n.echanges || []).length} échanges avec les partenaires, ${(n.conventions || []).length} conventions, ${(n.materiel || []).length} articles de matériel, ${(n.emprunts || []).length} emprunts, ${(n.mouvements || []).length} mouvements de stock, ${(n.depenses || []).length} dépenses, ${(n.regie || []).length} opérations de régie, ${(n.questionnaires || []).length} questionnaires, ${(n.reponsesQuestionnaire || []).length} réponses, ${(n.voyages || []).length} voyages et sorties.`,
     'Lecture : chaque onglet ou chaque tableau est une liste. Les mots sont écrits en toutes lettres (Oui, Non, Présent·e, Absent·e…) : le document se lit aussi bien en noir et blanc.',
     'ATTENTION : ce fichier contient des données personnelles. Le ranger dans un endroit fermé à clé ou protégé par mot de passe ; ne pas l\'envoyer par e-mail ordinaire ni le déposer sur GitHub.',
     'Pour restaurer l\'outil : utiliser le fichier « .json » de la même date (écran Sauvegarde > Restaurer).'];
@@ -249,11 +257,11 @@ export function brancher() {
     const fic = f.files[0]; if (!fic) return;
     try {
       const { donnees, date } = lireSauvegarde(await fic.text());
-      const total = COLS_SAUVEES.concat('parametres', 'contacts', 'echanges', 'conventions', 'materiel', 'emprunts', 'mouvements', 'portage', 'portageEchanges', 'accueils', 'depenses', 'regie').reduce((n, c) => n + donnees[c].length, 0);
+      const total = COLS_SAUVEES.concat('parametres', 'contacts', 'echanges', 'conventions', 'materiel', 'emprunts', 'mouvements', 'portage', 'portageEchanges', 'accueils', 'depenses', 'regie', 'questionnaires', 'reponsesQuestionnaire', 'voyages').reduce((n, c) => n + donnees[c].length, 0);
       const resume = COLS_SAUVEES.map(c => `${donnees[c].length} ${c}`).join(', ');
       confirmer('Restaurer cette sauvegarde ?', `Sauvegarde du ${date ? fr(date.slice(0, 10)) : '?'} : ${resume}. ${total > 15000 ? 'Attention : volume supérieur au quota quotidien gratuit d\'écritures.' : ''} Les données seront ajoutées ou remises à jour, sans rien supprimer.`, 'Restaurer', async () => {
         let n = 0, deja = 0;
-        for (const c of COLS_SAUVEES.concat('parametres', 'contacts', 'echanges', 'conventions', 'materiel', 'emprunts', 'mouvements', 'portage', 'portageEchanges', 'accueils', 'depenses', 'regie')) for (const r of donnees[c]) {
+        for (const c of COLS_SAUVEES.concat('parametres', 'contacts', 'echanges', 'conventions', 'materiel', 'emprunts', 'mouvements', 'portage', 'portageEchanges', 'accueils', 'depenses', 'regie', 'questionnaires', 'reponsesQuestionnaire', 'voyages')) for (const r of donnees[c]) {
           // Les mouvements de stock ne sont pas modifiables (règles Firestore) : un mouvement déjà présent est laissé tel quel.
           if (c === 'mouvements') { try { await store.save(c, r); } catch (e) { deja++; } } else await store.save(c, r);
           if (++n % 50 === 0) toast(`Restauration… ${n}/${total}`);

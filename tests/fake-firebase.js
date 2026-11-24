@@ -29,6 +29,7 @@
         return admin;
       case 'seniorsLite': return admin || (op === 'read' && accesInscr(uid));
       case 'accueils': return admin;
+      case 'questionnaires': case 'reponsesQuestionnaire': case 'voyages': return admin;
       case 'seances':
         if (op === 'read') return admin || sienne(data.activiteId);
         if (admin) return true;

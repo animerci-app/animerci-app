@@ -65,7 +65,7 @@ with sync_playwright() as p:
     check(not pg.is_visible('#ea-inscriptions') and pg.is_visible('#ea-materiel'),'intervenante : pas de case « Saisie des inscriptions »')
     pg.select_option('#e3','benevole'); pg.check('#ea-materiel'); pg.fill('#ea-fin','2099-12-31'); pg.click('#saveEq'); pg.wait_for_timeout(900)
     U=pg.evaluate("window.__fb.db.users.b1")
-    check(U['acces']=={'materiel':True,'portage':False,'inscriptions':False} and U['accesFin']==20991231 and U['accesJusqu']=='2099-12-31','compte b1 : cases et date de fin enregistrées '+str(U))
+    check(U['acces']=={'materiel':True,'portage':False,'budgets':False,'inscriptions':False} and U['accesFin']==20991231 and U['accesJusqu']=='2099-12-31','compte b1 : cases et date de fin enregistrées '+str(U))
     # Accueils : création d'une fiche bourse
     pg.click('nav.side [data-v=accueils]'); pg.wait_for_selector('text=Accueils'); pg.wait_for_timeout(900)
     check(pg.locator('#main .cand').count()==1 and 'Fictif' in pg.inner_text('main'),'Accueils : fiche de démonstration (bourse) listée')

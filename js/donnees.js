@@ -12,6 +12,7 @@ export function bornesMois(a, m) {
 //      acces ({materiel, portage, inscriptions} : accès actifs de l'équipe), inscrActId (activité choisie à l'écran de saisie des inscriptions), ongletAccueils, decembre (vrai en décembre), categorieBenevole,
 //      ongletPortage, anPortage (onglet et année du Portage), portageActif (module non désactivé),
 //      ongletMat (onglet du Matériel), anMat (année des emprunts rendus), matHisto (article dont l'historique est ouvert), matPersonnes (liste d'emprunteurs ouverte), horizonPeremption (date limite de l'alerte « péremption proche ») }
+//      questActId (fiche de résultats d'un questionnaire ouverte, lot J)
 export function besoins(c) {
   const B = [];
   const add = (col, key, filtre, opts) => B.push({ col, key, filtre: filtre || null, opts: opts || null });
@@ -88,6 +89,10 @@ export function besoins(c) {
   if (v === 'equipe') { add('users', 'all'); add('contacts', 'all'); }
   // Accueils (lot E) : toutes les fiches (quelques dizaines) et l'Annuaire (bénévoles, pour les chiffres)
   if (v === 'accueils') { add('accueils', 'all'); add('contacts', 'all'); }
+  // Questionnaires et sondages (lot J) : tous les questionnaires (petite liste) ; les réponses d'un questionnaire seulement quand sa fiche de résultats est ouverte.
+  if (v === 'questionnaires') { add('questionnaires', 'all'); if (c.questActId) add('reponsesQuestionnaire', 'q-' + c.questActId, ['questionnaireId', '==', c.questActId]); }
+  // Bibliothèque des voyages et sorties (lot J) : toutes les sorties, et l'Annuaire pour choisir prestataire et transporteur.
+  if (v === 'voyages') { add('voyages', 'all'); add('contacts', 'all'); }
   materiel(); portage(); budgets();
   // Partenaires : l'annuaire, les conventions et les échanges de l'année affichée (+ ceux d'un partenaire si sa fiche est ouverte)
   if (v === 'partenaires') {

@@ -152,5 +152,22 @@ export function donneesDemo() {
     { id: 'ac-3', type: 'stagiaire', nom: 'Modèle', prenom: 'Inès', debut: plusJours(-10), fin: plusJours(40), clos: false, etablissement: 'Lycée (démonstration)', referent: 'Tuteur de l\'établissement', convention: { etat: 'signee', echeance: plusJours(40), ou: 'Dossier stagiaires' }, missions: 'Découverte du service', bilan: '', rdv: [], heures: [] }
   ];
   const seniorsLite = seniors.map(copieSeniorLite);
-  return { seniors, activites, inscriptions, seances, fiches, taches, contacts, echanges, conventions, materiel, emprunts, mouvements, portage, portageEchanges, parametres, accueils, seniorsLite, depenses, regie };
+  // Questionnaires et sondages (lot J) : un questionnaire fictif avec ses réponses reçues (démonstration)
+  const qid = 'q-flo';
+  const questions = [
+    { id: 'qq1', texte: 'Êtes-vous satisfait·e des horaires de l\'atelier floral ?', type: 'choix', options: ['Très satisfait·e', 'Satisfait·e', 'Peu satisfait·e', 'Pas satisfait·e'] },
+    { id: 'qq2', texte: 'Quels jours vous conviendraient le mieux pour les prochains ateliers ?', type: 'libre' }
+  ];
+  const questionnaires = [{ id: qid, titre: 'Satisfaction de l\'atelier floral', theme: 'Satisfaction des animations', questions }];
+  const reponsesQuestionnaire = [
+    { id: 'rq1', questionnaireId: qid, questionnaireTitre: questionnaires[0].titre, dateRecue: plusJours(-10), diffusion: 'papier', reponses: { qq1: 'Très satisfait·e', qq2: 'Le mercredi après-midi' }, commentaire: '', par },
+    { id: 'rq2', questionnaireId: qid, questionnaireTitre: questionnaires[0].titre, dateRecue: plusJours(-8), diffusion: 'oral', reponses: { qq1: 'Satisfait·e', qq2: 'Peu importe, tant que c\'est régulier' }, commentaire: '', par },
+    { id: 'rq3', questionnaireId: qid, questionnaireTitre: questionnaires[0].titre, dateRecue: plusJours(-6), diffusion: 'email', reponses: { qq1: 'Très satisfait·e' }, commentaire: '', par }
+  ];
+  // Bibliothèque des voyages et sorties (lot J) : deux sorties fictives (une récente, une de l'an dernier) pour la comparaison annuelle
+  const voyages = [
+    { id: 'vg-1', destination: 'Marché de Noël de Bruxelles', date: plusJours(29), programme: 'Départ 8h parking mairie, marché libre, retour 18h.', prestataireId: 'c-par', prestataireNom: 'Association Les Jardins d\'Hiver', transporteurId: '', transporteurNom: 'Autocariste (démonstration)', activiteId: 'a-bru', activiteNom: 'Sortie au marché de Noël de Bruxelles', participants: 45, cout: 1200, budget: 'Budget ville', documentOu: 'Classeur « Sorties », bureau', retours: 'Très appréciée les années précédentes, à reconduire.', par },
+    { id: 'vg-2', destination: 'Côte d\'Opale', date: `${an - 1}-06-12`, programme: 'Promenade au bord de mer et repas au restaurant.', prestataireId: '', prestataireNom: '', transporteurId: '', transporteurNom: 'Autocariste (démonstration)', activiteId: '', activiteNom: '', participants: 38, cout: 950, budget: 'Budget résidence', documentOu: '', retours: 'Beau temps, bons retours.', par }
+  ];
+  return { seniors, activites, inscriptions, seances, fiches, taches, contacts, echanges, conventions, materiel, emprunts, mouvements, portage, portageEchanges, parametres, accueils, seniorsLite, depenses, regie, questionnaires, reponsesQuestionnaire, voyages };
 }
