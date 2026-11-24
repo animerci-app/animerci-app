@@ -35,7 +35,14 @@ export function besoins(c) {
     if (c.view !== 'portage' || c.portageActif === false || !peut('portage')) return;
     add('portage', 'all');
     if (c.ongletPortage === 'echanges') { const an = c.anPortage || c.auj.slice(0, 4); add('portageEchanges', `an-${an}`, [['date', '>=', `${an}-01-01`], ['date', '<=', `${an}-12-31`]]); }
+    if (c.ongletPortage === 'journal') { const an = c.anPortage || c.auj.slice(0, 4); add('portageJournal', `an-${an}`, [['date', '>=', `${an}-01-01`], ['date', '<=', `${an}-12-31`]]); }
     if (c.role === 'admin') add('seniors', 'all');
+  };
+  // Lien social (lot B second temps, v1.24.0) : administratrice seule. Les contacts de l'année affichée.
+  const lienSocial = () => {
+    if (c.view !== 'liensocial' || c.role !== 'admin') return;
+    add('seniors', 'all');
+    const an = c.anLS || c.auj.slice(0, 4); add('lienSocial', `an-${an}`, [['date', '>=', `${an}-01-01`], ['date', '<=', `${an}-12-31`]]);
   };
   // Budgets et régie (lot D) : l'administratrice et l'équipe (si l'accès est coché) lisent les dépenses et opérations de l'année affichée (une par écran).
   const budgets = () => {
@@ -72,7 +79,7 @@ export function besoins(c) {
     // Alertes « matériel » : seulement les articles concernés (stock bas, manquant, péremption proche) et les emprunts non rendus : requêtes d'égalité ou de plage sur un seul champ, sans index à créer
     if (c.horizonPeremption) { add('materiel', 'bas', ['bas', '==', true]); add('materiel', 'manquant', ['manquant', '==', true]); add('materiel', 'peremp-' + c.horizonPeremption, [['echeance', '>', '0'], ['echeance', '<=', c.horizonPeremption]]); add('emprunts', 'ouverts', ['rendu', '==', false]); }
     // Alerte « portage » : reprises prévues dépassées (bénéficiaires interrompus) et suites à donner au prestataire : deux petites listes
-    if (c.portageActif !== false) { add('portage', 'interrompus', ['etat', '==', 'interrompu']); add('portageEchanges', 'suites', ['suiteAFaire', '==', true]); }
+    if (c.portageActif !== false) { add('portage', 'interrompus', ['etat', '==', 'interrompu']); add('portageEchanges', 'suites', ['suiteAFaire', '==', true]); add('portageJournal', 'suites', ['suiteAFaire', '==', true]); }
     for (const a of c.activites || []) if (a.type === 'sortie' && a.date && a.date >= c.auj && a.date <= c.horizonSorties) { add('inscriptions', a.id, ['activiteId', '==', a.id]); add('fiches', a.id, ['activiteId', '==', a.id]); }
   }
   if (v === 'seniors' || v === 'bilans' || v === 'activite') add('seniors', 'all');
@@ -93,7 +100,7 @@ export function besoins(c) {
   if (v === 'questionnaires') { add('questionnaires', 'all'); if (c.questActId) add('reponsesQuestionnaire', 'q-' + c.questActId, ['questionnaireId', '==', c.questActId]); }
   // Bibliothèque des voyages et sorties (lot J) : toutes les sorties, et l'Annuaire pour choisir prestataire et transporteur.
   if (v === 'voyages') { add('voyages', 'all'); add('contacts', 'all'); }
-  materiel(); portage(); budgets();
+  materiel(); portage(); budgets(); lienSocial();
   // Partenaires : l'annuaire, les conventions et les échanges de l'année affichée (+ ceux d'un partenaire si sa fiche est ouverte)
   if (v === 'partenaires') {
     const an = c.anPart || c.auj.slice(0, 4);

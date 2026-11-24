@@ -9,7 +9,7 @@ import { P, moduleActif } from './parametres.js';
 import { classeur, documentHtml, imprimer } from './backup.js';
 import { S, pret, chargement, $, esc, aujourdhui, initiales, render, toast, modal, closeModal, confirmer, telecharger, sauver, mettreCorbeille, peutAdmin } from './ui.js';
 
-const ONGLETS = [['beneficiaires', 'Bénéficiaires'], ['echanges', 'Échanges avec le prestataire'], ['stats', 'Statistiques annuelles']];
+const ONGLETS = [['beneficiaires', 'Bénéficiaires'], ['journal', 'Journal de suivi'], ['echanges', 'Échanges avec le prestataire'], ['stats', 'Statistiques annuelles']];
 export const ongletPortage = () => (ONGLETS.some(o => o[0] === S.ongletPortage) ? S.ongletPortage : 'beneficiaires');
 export const anneePortage = () => Number(S.anPortage) || Number(aujourdhui().slice(0, 4));
 const fr = d => L.fmtDate(d);
@@ -52,15 +52,16 @@ export async function apresFiche(avant, senior) {
 export function portage() {
   if (!pret('portage')) return chargement('Portage de repas');
   const tab = ongletPortage(), admin = peutAdmin();
-  const ajout = { beneficiaires: null, echanges: ['pg-ech-form', '+ Nouvel échange'], stats: null }[tab];
-  return `<div class="top"><div><h1>Portage de repas</h1><p>Les personnes qui reçoivent le portage à domicile : jours de livraison, interruptions, reprises et arrêts, échanges avec l'entreprise de restauration et chiffres de l'année.</p></div>
+  const ajout = { beneficiaires: null, journal: ['pg-jo-form', '+ Nouvelle entrée'], echanges: ['pg-ech-form', '+ Nouvel échange'], stats: null }[tab];
+  return `<div class="top"><div><h1>Portage de repas</h1><p>Les personnes qui reçoivent le portage à domicile : jours de livraison, interruptions, reprises et arrêts, journal de suivi, échanges avec l'entreprise de restauration et chiffres de l'année.</p></div>
     <div class="quick">${ajout ? `<button class="btn" data-action="${ajout[0]}">${ajout[1]}</button>` : ''}${tab === 'stats' && admin ? '<button class="btn sec" data-action="pg-xlsx">Excel (.xlsx)</button><button class="btn sec" data-action="pg-pdf">PDF / Imprimer</button>' : ''}</div></div>
   <div class="filters" role="tablist">${ONGLETS.map(([k, l]) => `<button role="tab" data-action="pg-tab" data-v="${k}" aria-pressed="${tab === k}">${l}</button>`).join('')}</div>
-  ${tab === 'echanges' ? vueEchanges() : tab === 'stats' ? vueStats() : vueBeneficiaires()}`;
+  ${tab === 'journal' ? vueJournal() : tab === 'echanges' ? vueEchanges() : tab === 'stats' ? vueStats() : vueBeneficiaires()}`;
 }
 export function apresPortage() {
   const r = $('#rech-pg'); if (r) r.oninput = () => { S.rechPortage = r.value; $('#liste-pg').innerHTML = listeBeneficiaires(); };
   const e = $('#rech-ech'); if (e) e.oninput = () => { S.rechEchPortage = e.value; $('#liste-ech').innerHTML = listeEchanges(); };
+  const j = $('#rech-jo'); if (j) j.oninput = () => { S.rechJoPortage = j.value; $('#liste-jo').innerHTML = listeJournal(); };
 }
 
 /* ---------- Bénéficiaires ---------- */
@@ -140,6 +141,56 @@ function debutForm(id) {
   };
 }
 
+/* ---------- Journal de suivi (cahier §9.3, lot B second temps, v1.24.0) ---------- */
+// Appels du bénéficiaire ou d'un proche, modifications de livraison, problèmes rencontrés, demandes, actions réalisées : un journal lié à un bénéficiaire du portage.
+// Mêmes accès que le reste du Portage (équipe si l'accès est coché), même avertissement ✔/✘ : aucune donnée de santé.
+function listeJournal() {
+  const an = anneePortage(), seul = S.fJoPortage === 'asuivre', q = L.cleNom(S.rechJoPortage || '');
+  const nomBenef = id => { const d = S.cache.portage.find(x => x.id === id); return d ? nomDe(d) : 'Bénéficiaire'; };
+  const rows = S.cache.portageJournal.filter(j => j.date && j.date.slice(0, 4) === String(an) && (!seul || j.suiteAFaire) && (!q || L.cleNom([nomBenef(j.portageId), j.resume, j.suite].join(' ')).includes(q))).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  return rows.length ? `<p class="sub">${rows.length} entrée${rows.length > 1 ? 's' : ''}</p>` + rows.map(j => ligneJournal(j, nomBenef(j.portageId))).join('')
+    : '<div class="card"><div class="empty"><b>Aucune entrée</b>Notez ici les appels du bénéficiaire ou d\'un proche, les modifications de livraison, les problèmes rencontrés, les demandes et les actions réalisées.</div></div>';
+}
+function vueJournal() {
+  const an = anneePortage();
+  if (!pret('portageJournal', `an-${an}`)) return chargement('Journal de suivi');
+  return `<div style="display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;margin-bottom:10px">${selectAnnee('pg-an', an)}
+    <input class="search" id="rech-jo" type="search" placeholder="Chercher : personne, résumé…" aria-label="Chercher dans le journal de suivi" value="${esc(S.rechJoPortage || '')}" style="flex:1;min-width:180px">
+    <label class="chk" style="margin:0 0 6px"><input type="checkbox" data-change="pg-fjo" ${S.fJoPortage === 'asuivre' ? 'checked' : ''}> Suites à donner seulement</label></div>
+  <div id="liste-jo">${listeJournal()}</div>`;
+}
+function ligneJournal(j, nomBenef) {
+  const retard = j.suiteAFaire && j.suiteDate && j.suiteDate < aujourdhui();
+  return `<button class="cand" data-action="pg-jo-form" data-id="${esc(j.id)}"><span class="av" aria-hidden="true">${esc(initiales(nomBenef))}</span>
+    <span style="flex:1"><b>${esc(nomBenef)}</b><span class="why"><span class="pill p-bleu">${esc(fr(j.date))}</span><span class="pill p-rose">${esc(j.type || '')}</span>
+    ${j.suiteAFaire ? `<span class="pill ${retard ? 'p-crit' : 'p-warn'}">Suite à donner${j.suiteDate ? ' : ' + esc(fr(j.suiteDate)) : ''}</span>` : ''}</span>
+    ${j.resume ? `<span class="sub">${esc(j.resume.length > 140 ? j.resume.slice(0, 140) + '…' : j.resume)}</span>` : ''}</span></button>`;
+}
+function journalForm(id) {
+  const j = id ? S.cache.portageJournal.find(x => x.id === id) : null;
+  const docs = docsPortage().slice().sort((a, b) => String(a.nom || '').localeCompare(String(b.nom || ''), 'fr'));
+  if (!docs.length) return toast('Aucun bénéficiaire à qui rattacher une entrée du journal.');
+  const types = P('portage.journalTypes'), d = j || { type: types[0], date: aujourdhui(), portageId: docs[0].id };
+  modal(`<h2>${id ? 'Modifier l\'entrée' : 'Nouvelle entrée du journal de suivi'}</h2>
+  <div class="field"><label for="j1">Bénéficiaire</label><select id="j1" ${id ? 'disabled' : ''}>${docs.map(x => `<option value="${esc(x.id)}" ${d.portageId === x.id ? 'selected' : ''}>${esc(nomDe(x))}</option>`).join('')}</select></div>
+  <div class="two"><div class="field"><label for="j2">Type</label><select id="j2">${types.map(t => `<option ${d.type === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></div>
+  <div class="field"><label for="j3">Date</label><input id="j3" type="date" value="${esc(d.date || aujourdhui())}"></div></div>
+  <div class="field"><label for="j4">Résumé <small class="sub">(facultatif)</small></label><textarea id="j4" rows="3" maxlength="600">${esc(d.resume || '')}</textarea></div>
+  <div class="two"><div class="field"><label for="j5">Suite à donner <small class="sub">(facultatif)</small></label><input id="j5" maxlength="200" value="${esc(d.suite || '')}" placeholder="Ex. : rappeler pour confirmer le nouveau jour"></div>
+  <div class="field"><label for="j6">Pour le</label><input id="j6" type="date" value="${esc(d.suiteDate || '')}"></div></div>
+  <label class="chk" style="margin:0 0 8px"><input type="checkbox" id="j7" ${d.suiteFaite ? 'checked' : ''}> Suite faite (clos)</label>
+  ${AVERT}${d.par ? `<p class="sub" style="margin:0 0 8px">Saisi par ${esc(d.par)}.</p>` : ''}
+  <div class="quick" style="margin-top:6px"><button class="btn" id="saveJ">Enregistrer</button><button class="btn ghost" data-action="close">Annuler</button>${id && peutAdmin() ? '<button class="btn ghost" id="delJ" style="margin-left:auto">Supprimer</button>' : ''}</div>`);
+  $('#saveJ').onclick = async () => {
+    const o = { portageId: id ? d.portageId : $('#j1').value, type: $('#j2').value, date: $('#j3').value };
+    const err = L.erreurJournalPortage(o, types); if (err) return toast(err);
+    const suite = $('#j5').value.trim(), faite = !!suite && $('#j7').checked;
+    await sauver('portageJournal', { ...(id ? { id } : {}), ...o, resume: $('#j4').value.trim(), suite, suiteDate: suite ? $('#j6').value : '', suiteFaite: faite, suiteAFaire: !!suite && !faite, par: d.par || S.user.nom }, 'Entrée enregistrée');
+    closeModal();
+  };
+  if (id && peutAdmin()) $('#delJ').onclick = () => confirmer('Supprimer cette entrée ?', `Entrée du ${fr(d.date)} du journal de suivi.`, 'Supprimer', async () => { await mettreCorbeille('portageJournal', j); await store.remove('portageJournal', id); closeModal(); toast('Entrée mise à la corbeille'); });
+}
+
 /* ---------- Échanges avec le prestataire ---------- */
 const anneesProposees = () => { const a = Number(aujourdhui().slice(0, 4)); return [a + 1, a, a - 1, a - 2, a - 3].filter((x, i, t) => t.indexOf(x) === i); };
 const selectAnnee = (id, courante) => `<div class="field" style="max-width:160px"><label for="${id}">Année</label><select id="${id}" data-change="pg-an">${[...new Set([...anneesProposees(), courante])].sort((a, b) => b - a).map(a => `<option ${a === courante ? 'selected' : ''}>${a}</option>`).join('')}</select></div>`;
@@ -207,10 +258,12 @@ export const actions = {
   'pg-histo': el => histoForm(el.dataset.id),
   'pg-debut': el => debutForm(el.dataset.id),
   'pg-ech-form': el => echangeForm(el.dataset.id),
+  'pg-jo-form': el => journalForm(el.dataset.id),
   'pg-xlsx': async () => { if (!peutAdmin()) return; const an = anneePortage(); telecharger(`portage-${an}.xlsx`, classeur(L.tableauxPortage(docsPortage(), an), enteteExport(an)), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); toast('Fichier Excel téléchargé'); },
   'pg-pdf': () => { if (!peutAdmin()) return; const an = anneePortage(); imprimer(documentHtml(L.tableauxPortage(docsPortage(), an), enteteExport(an), `Portage de repas : statistiques ${an}`)); }
 };
 export const changes = {
   'pg-an': el => { S.anPortage = Number(el.value); render(); },
-  'pg-fech': el => { S.fEchPortage = el.checked ? 'asuivre' : 'tous'; render(); }
+  'pg-fech': el => { S.fEchPortage = el.checked ? 'asuivre' : 'tous'; render(); },
+  'pg-fjo': el => { S.fJoPortage = el.checked ? 'asuivre' : 'tous'; render(); }
 };

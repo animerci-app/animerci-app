@@ -33,7 +33,7 @@ with sync_playwright() as p:
     login('m@x.fr','faux'); pg.wait_for_selector('#lerr',state='visible'); check('incorrect' in pg.inner_text('#lerr'),'mot de passe erroné : message clair')
     # administratrice
     login('m@x.fr','pw1'); pg.wait_for_selector('text=Que voulez-vous faire')
-    check(pg.locator('nav.side .nav-btn[data-v]').count()==18,'admin : 18 entrées de menu (lot J : Questionnaires, Voyages)')
+    check(pg.locator('nav.side .nav-btn[data-v]').count()==19,'admin : 19 entrées de menu (lot B second temps : Lien social)')
     # mot de passe trop court (pw1 = 3 caractères) : bandeau + changement
     check(pg.locator('text=Votre mot de passe est trop court').count()==1,'mot de passe court : bandeau affiché')
     pg.click('main [data-action=mdp-form]'); pg.wait_for_selector('#m0')

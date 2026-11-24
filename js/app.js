@@ -10,6 +10,7 @@ import * as part from './partenaires.js';
 import * as mat from './materiel.js';
 import * as adhs from './adhesions.js';
 import * as pg from './portage.js';
+import * as ls from './liensocial.js';
 import * as ac from './accueils.js';
 import * as ins from './inscrire.js';
 import * as bud from './budgets.js';
@@ -25,13 +26,29 @@ import { VERSION } from './version.js';
 import * as pa from './parametres.js';
 import { P, moduleActif } from './parametres.js';
 
+// Ordre des rubriques : regroupé en 6 blocs visuels (v1.24.0), selon l'enchaînement réel du travail du service plutôt que l'ordre d'ajout des lots (voir GROUPES ci-dessous).
 const NAV = {
-  admin: [['home', 'Accueil', '⌂'], ['seniors', 'Personnes', '☺'], ['activites', 'Activités', '♥'], ['planning', 'Planning', '▦'], ['taches', 'Tâches', '✓'], ['materiel', 'Matériel', '▣'], ['budgets', 'Budgets', '💰'], ['regie', 'Régie', '🏦'], ['bilans', 'Bilans', '▮'], ['annuaire', 'Annuaire', '☎'], ['partenaires', 'Partenaires', '⇄'], ['portage', 'Portage', '◉'], ['accueils', 'Accueils jeunes et stagiaires', '☼'], ['questionnaires', 'Questionnaires', '✎'], ['voyages', 'Voyages et sorties', '✈'], ['equipe', 'Équipe', '☻'], ['parametres', 'Paramètres', '⚙'], ['sauvegarde', 'Sécurité', '⛨']],
+  admin: [['home', 'Accueil', '⌂'], ['chercher', 'Chercher', '⌕'], ['taches', 'Tâches', '✓'], ['bilans', 'Bilans', '▮'],
+    ['seniors', 'Personnes', '☺'], ['portage', 'Portage', '◉'], ['liensocial', 'Lien social', '♡'], ['accueils', 'Accueils jeunes et stagiaires', '☼'],
+    ['activites', 'Activités', '♥'], ['planning', 'Planning', '▦'], ['questionnaires', 'Questionnaires', '✎'], ['voyages', 'Voyages et sorties', '✈'],
+    ['annuaire', 'Annuaire', '☎'], ['partenaires', 'Partenaires', '⇄'], ['equipe', 'Équipe', '☻'],
+    ['materiel', 'Matériel', '▣'], ['budgets', 'Budgets', '💰'], ['regie', 'Régie', '🏦'],
+    ['parametres', 'Paramètres', '⚙'], ['sauvegarde', 'Sécurité', '⛨']],
   // Intervenant·e : ses activités et le planning ; bénévole : le planning. Matériel, Portage, Budgets et régie, Saisie des inscriptions s'ajoutent si l'administratrice a coché l'accès (Équipe).
-  intervenant: [['activites', 'Mes activités', '♥'], ['planning', 'Planning', '▦'], ['materiel', 'Matériel', '▣'], ['budgets', 'Budgets', '💰'], ['regie', 'Régie', '🏦'], ['portage', 'Portage', '◉']],
-  benevole: [['planning', 'Planning', '▦'], ['materiel', 'Matériel', '▣'], ['budgets', 'Budgets', '💰'], ['regie', 'Régie', '🏦'], ['portage', 'Portage', '◉'], ['inscrire', 'Inscriptions', '✎']],
+  intervenant: [['activites', 'Mes activités', '♥'], ['planning', 'Planning', '▦'], ['portage', 'Portage', '◉'], ['materiel', 'Matériel', '▣'], ['budgets', 'Budgets', '💰'], ['regie', 'Régie', '🏦']],
+  benevole: [['planning', 'Planning', '▦'], ['portage', 'Portage', '◉'], ['materiel', 'Matériel', '▣'], ['budgets', 'Budgets', '💰'], ['regie', 'Régie', '🏦'], ['inscrire', 'Inscriptions', '✎']],
   partenaire: [['mespart', 'Mes échanges', '⇄']]
 };
+// Regroupement visuel du menu (v1.24.0), validé par l'équipe projet : l'enchaînement réel du travail du service plutôt que l'ordre d'ajout des lots.
+// Un groupe sans aucune rubrique visible pour le rôle (ou le module) en cours ne s'affiche pas (ni titre, ni séparateur orphelin).
+const GROUPES = [
+  { titre: 'Pilotage du jour', cles: ['home', 'chercher', 'taches', 'bilans'] },
+  { titre: 'Publics accompagnés', cles: ['seniors', 'portage', 'liensocial', 'accueils'] },
+  { titre: 'Activités et sorties', cles: ['activites', 'planning', 'questionnaires', 'voyages'] },
+  { titre: 'Partenaires et équipe', cles: ['annuaire', 'partenaires', 'equipe'] },
+  { titre: 'Ressources', cles: ['materiel', 'budgets', 'regie'] },
+  { titre: 'Administration', cles: ['parametres', 'sauvegarde'] }
+];
 // Modules facultatifs : masqués du menu quand l'administratrice les désactive (Paramètres)
 const FACULTATIFS = { taches: 'taches', bilans: 'bilans', portage: 'portage', accueils: 'accueils', budgets: 'budgets', regie: 'budgets', questionnaires: 'questionnaires', voyages: 'voyages' };
 const ACCES_NAV = { materiel: 'materiel', portage: 'portage', inscrire: 'inscriptions', budgets: 'budgets', regie: 'budgets' };
@@ -41,7 +58,7 @@ const ACCUEIL = { admin: 'home', intervenant: 'activites', benevole: 'planning',
 /* ---------- Données ---------- */
 // Chargement à la demande : on ne s'abonne qu'à ce que l'écran ouvert affiche (voir donnees.js). Chaque abonnement n'est créé qu'une fois.
 let unsubs = [], parts = {}, actifs = new Set(), minuteurPurge = null, rendu = false;
-const COLS_ECOUTE = COLS.concat(['users', 'corbeille', 'journal', 'parametres', 'contacts', 'echanges', 'conventions', 'materiel', 'emprunts', 'mouvements', 'portage', 'portageEchanges', 'accueils', 'seniorsLite', 'depenses', 'regie', 'questionnaires', 'reponsesQuestionnaire', 'voyages']);
+const COLS_ECOUTE = COLS.concat(['users', 'corbeille', 'journal', 'parametres', 'contacts', 'echanges', 'conventions', 'materiel', 'emprunts', 'mouvements', 'portage', 'portageEchanges', 'portageJournal', 'lienSocial', 'accueils', 'seniorsLite', 'depenses', 'regie', 'questionnaires', 'reponsesQuestionnaire', 'voyages']);
 function planifierRendu() { if (rendu) return; rendu = true; Promise.resolve().then(() => { rendu = false; render(); }); }
 function listen(col, key, filtre, opts) {
   unsubs.push(store.subscribe(col, (rows, err) => {
@@ -56,7 +73,7 @@ function listen(col, key, filtre, opts) {
 function synchroniser() {
   const u = S.user; if (!u || !u.role) return;
   const mes = (u.activites || []);
-  for (const b of besoins({ role: u.role, uid: u.uid, view: S.view, actId: S.actId, mois: S.moisPlan || { a: new Date().getFullYear(), m: new Date().getMonth() }, nbMois: S.nbMois, stat: S.stat, anPart: S.anPart, partId: S.partId, ongletMat: mat.ongletMat(), anMat: S.anMat, ongletPortage: pg.ongletPortage(), anPortage: S.anPortage, portageActif: moduleActif('portage'), anBudgets: bud.anneeBudgets(), anRegie: reg.anneeRegie(), budgetsActif: moduleActif('budgets'), acces: { materiel: L.accesActif(u, 'materiel', aujourdhui()), portage: L.accesActif(u, 'portage', aujourdhui()), inscriptions: L.accesActif(u, 'inscriptions', aujourdhui()), budgets: L.accesActif(u, 'budgets', aujourdhui()) }, inscrActId: S.inscrActId, decembre: aujourdhui().slice(5, 7) === '12' && moduleActif('accueils'), matHisto: S.matHisto, matPersonnes: S.matPersonnes, horizonPeremption: ajouterJours(aujourdhui(), P('materiel.alertePeremptionJours')), questActId: S.questActId,
+  for (const b of besoins({ role: u.role, uid: u.uid, view: S.view, actId: S.actId, mois: S.moisPlan || { a: new Date().getFullYear(), m: new Date().getMonth() }, nbMois: S.nbMois, stat: S.stat, anPart: S.anPart, partId: S.partId, ongletMat: mat.ongletMat(), anMat: S.anMat, ongletPortage: pg.ongletPortage(), anPortage: S.anPortage, portageActif: moduleActif('portage'), anLS: S.anLS, anBudgets: bud.anneeBudgets(), anRegie: reg.anneeRegie(), budgetsActif: moduleActif('budgets'), acces: { materiel: L.accesActif(u, 'materiel', aujourdhui()), portage: L.accesActif(u, 'portage', aujourdhui()), inscriptions: L.accesActif(u, 'inscriptions', aujourdhui()), budgets: L.accesActif(u, 'budgets', aujourdhui()) }, inscrActId: S.inscrActId, decembre: aujourdhui().slice(5, 7) === '12' && moduleActif('accueils'), matHisto: S.matHisto, matPersonnes: S.matPersonnes, horizonPeremption: ajouterJours(aujourdhui(), P('materiel.alertePeremptionJours')), questActId: S.questActId,
     rechGlobale: S.rechGlobale, onglet: sec.ongletCourant(), auj: aujourdhui(), horizonSorties: ajouterJours(aujourdhui(), 60), activites: S.cache.activites, mesActivites: mes })) {
     const k = b.col + '|' + b.key; if (actifs.has(k)) continue;
     actifs.add(k); listen(b.col, b.key, b.filtre, b.opts);
@@ -87,7 +104,7 @@ function demarrer() {
   if (S.user && S.user.role === 'admin') minuteurPurge = setTimeout(sec.purger, 5000);
   synchroniser();
 }
-function arreter() { clearTimeout(minuteurPurge); unsubs.forEach(u => u()); unsubs = []; parts = {}; actifs = new Set(); S.pret = new Set(); S.rechGlobale = false; S.matPersonnes = false; S.compteursFiches = null; S.compteursFichesNav = -1; S.ongletSen = 'liste'; S.anAdh = 0; S.fAdh = 'encours'; S.inscrActId = null; S.inscrQ = ''; S.ongletAccueils = null; S.liteErreur = false; S.acClos = false; S.rechAdh = ''; S.migrationFaite = false; S.portageSyncNav = -1; S.ongletPortage = 'beneficiaires'; S.fPortage = 'actifs'; S.rechPortage = ''; S.anPortage = 0; S.fEchPortage = 'tous'; S.rechEchPortage = ''; S.matHisto = null; S.ongletMat = 'inventaire'; S.fEmprunt = 'encours'; S.anMat = ''; S.rechMat = ''; S.fCatMat = ''; S.fEmpMat = ''; S.fSaisonMat = ''; S.fSigMat = false; S.compteurs = {}; S.compteursNav = -1; S.ongletBudgets = 'depenses'; S.anBudgets = 0; S.fBudget = ''; S.rechBudgets = ''; S.anRegie = 0; S.fRegie = 'toutes'; S.rechRegie = ''; S.questActId = null; S.ongletQuest = 'reponses'; S.rechVoyages = ''; COLS_ECOUTE.forEach(c => { S.cache[c] = []; }); }
+function arreter() { clearTimeout(minuteurPurge); unsubs.forEach(u => u()); unsubs = []; parts = {}; actifs = new Set(); S.pret = new Set(); S.rechGlobale = false; S.matPersonnes = false; S.compteursFiches = null; S.compteursFichesNav = -1; S.ongletSen = 'liste'; S.anAdh = 0; S.fAdh = 'encours'; S.inscrActId = null; S.inscrQ = ''; S.ongletAccueils = null; S.liteErreur = false; S.acClos = false; S.rechAdh = ''; S.migrationFaite = false; S.portageSyncNav = -1; S.ongletPortage = 'beneficiaires'; S.fPortage = 'actifs'; S.rechPortage = ''; S.anPortage = 0; S.fEchPortage = 'tous'; S.rechEchPortage = ''; S.fJoPortage = 'tous'; S.rechJoPortage = ''; S.ongletLS = 'contacts'; S.anLS = 0; S.rechLS = ''; S.fLS = ''; S.matHisto = null; S.ongletMat = 'inventaire'; S.fEmprunt = 'encours'; S.anMat = ''; S.rechMat = ''; S.fCatMat = ''; S.fEmpMat = ''; S.fSaisonMat = ''; S.fSigMat = false; S.compteurs = {}; S.compteursNav = -1; S.ongletBudgets = 'depenses'; S.anBudgets = 0; S.fBudget = ''; S.rechBudgets = ''; S.anRegie = 0; S.fRegie = 'toutes'; S.rechRegie = ''; S.questActId = null; S.ongletQuest = 'reponses'; S.rechVoyages = ''; COLS_ECOUTE.forEach(c => { S.cache[c] = []; }); }
 
 /* ---------- Écrans ---------- */
 function ecranConnexion() {
@@ -107,16 +124,30 @@ function ecranSansRole() {
   return `<div class="login"><div class="card"><h1>Accès à activer</h1><p>Votre compte (${esc(S.user.email)}) est bien connecté, mais aucun rôle ne lui a encore été attribué. Demandez à l'administratrice de l'activer.</p>
   ${S.user.erreur ? `<div class="err">${esc(S.user.erreur)}</div>` : ''}<button class="btn" data-action="logout">Se déconnecter</button></div></div>`;
 }
+// Un item du menu : le bouton « Chercher » n'est pas une navigation (data-action="rech-globale") contrairement aux autres.
+function boutonNav(k, l, ic, courante) {
+  if (k === 'chercher') return `<button class="nav-btn" data-action="rech-globale"><span aria-hidden="true" style="width:20px;text-align:center">${ic}</span><span>${l}</span></button>`;
+  return `<button class="nav-btn" data-action="nav" data-v="${k}" ${courante === k ? 'aria-current="page"' : ''}><span aria-hidden="true" style="width:20px;text-align:center">${ic}</span><span>${l}</span></button>`;
+}
 function nav() {
-  const items = navPour(S.user);
+  const items = navPour(S.user), parCle = new Map(items.map(it => [it[0], it]));
   const courante = S.view === 'activite' ? 'activites' : S.view;
-  return `<div class="brand"><img src="icons/icon-192.png" alt="" width="34" height="34">${esc(P('nomOutil'))}</div>` + (S.user.role === 'admin' ? '<button class="nav-btn" data-action="rech-globale" style="background:rgba(255,255,255,.14)"><span aria-hidden="true" style="width:20px;text-align:center">⌕</span><span>Chercher</span></button>' : '') + items.map(([k, l, ic]) =>
-    `<button class="nav-btn" data-action="nav" data-v="${k}" ${courante === k ? 'aria-current="page"' : ''}><span aria-hidden="true" style="width:20px;text-align:center">${ic}</span><span>${l}</span></button>`).join('') +
+  // Regroupement visuel (v1.24.0) : un groupe sans aucun item visible pour ce rôle ne s'affiche pas (ni titre, ni séparateur orphelin).
+  // GROUPES décrit la mise en page de l'administratrice ; les rubriques propres aux autres rôles (ex. « Inscriptions » du bénévole, « Mes échanges » du partenaire) ne s'y trouvent pas :
+  // elles sont ajoutées sans titre, dans un dernier bloc, pour ne jamais disparaître du menu (filet de sécurité).
+  const vues = GROUPES.map(g => g.cles.map(c => parCle.get(c)).filter(Boolean)).filter(g => g.length);
+  const titres = GROUPES.filter(g => g.cles.some(c => parCle.has(c))).map(g => g.titre);
+  const casees = new Set(GROUPES.flatMap(g => g.cles));
+  const reste = items.filter(([k]) => !casees.has(k));
+  if (reste.length) { vues.push(reste); titres.push(''); }
+  if (!vues.length) { vues.push(items); titres.push(''); }
+  return `<div class="brand"><img src="icons/icon-192.png" alt="" width="34" height="34">${esc(P('nomOutil'))}</div>` +
+    vues.map((grp, i) => `<div class="nav-groupe">${titres[i] ? `<div class="nav-titre">${esc(titres[i])}</div>` : ''}${grp.map(([k, l, ic]) => boutonNav(k, l, ic, courante)).join('')}</div>`).join('') +
     // Sur téléphone le pied du menu est masqué : ce bouton ouvre la fenêtre « Mon compte » (déconnexion, mot de passe, installation)
     `<button class="nav-btn nav-compte" data-action="compte"><span aria-hidden="true" style="width:20px;text-align:center">☰</span><span>Compte</span></button>` +
     `<div class="foot"><div>${esc(S.user.nom)}</div><div style="font-size:12px;opacity:.7">Version ${VERSION}</div>${MODE_REEL ? '<button class="nav-btn" style="padding:6px 0;font-size:13px" data-action="mdp-form">Mon mot de passe</button>' : ''}${pwa.boutonInstaller()}<button class="nav-btn" style="padding:6px 0" data-action="logout">Se déconnecter</button>${MODE_REEL ? '' : '<button class="nav-btn" style="padding:6px 0;font-size:13px" data-action="reset-demo">Remettre les données de démonstration</button>'}</div>`;
 }
-const VUES = { home: core.accueil, seniors: core.seniors, taches: core.taches, planning: core.planning, bilans: core.bilans, activites: act.activites, activite: act.activite, annuaire: ann.annuaire, partenaires: part.partenaires, mespart: part.espacePartenaire, materiel: mat.materiel, budgets: bud.budgets, regie: reg.regie, portage: pg.portage, accueils: ac.accueils, questionnaires: quest.questionnaires, voyages: voy.voyages, inscrire: ins.inscrire, equipe: eq.equipe, sauvegarde: sec.securite, parametres: pa.parametres };
+const VUES = { home: core.accueil, seniors: core.seniors, taches: core.taches, planning: core.planning, bilans: core.bilans, activites: act.activites, activite: act.activite, annuaire: ann.annuaire, partenaires: part.partenaires, mespart: part.espacePartenaire, materiel: mat.materiel, budgets: bud.budgets, regie: reg.regie, portage: pg.portage, liensocial: ls.lienSocial, accueils: ac.accueils, questionnaires: quest.questionnaires, voyages: voy.voyages, inscrire: ins.inscrire, equipe: eq.equipe, sauvegarde: sec.securite, parametres: pa.parametres };
 
 setRender(() => {
   synchroniser();
@@ -137,6 +168,7 @@ setRender(() => {
   if (S.view === 'budgets') bud.apresBudgets();
   if (S.view === 'regie') reg.apresRegie();
   if (S.view === 'portage') pg.apresPortage();
+  if (S.view === 'liensocial') ls.apresLienSocial();
   if (S.view === 'voyages') voy.apresVoyages();
   if (S.view === 'inscrire') ins.apresInscrire();
   if (S.view === 'sauvegarde') sec.apresSecurite();
@@ -144,7 +176,7 @@ setRender(() => {
 
 /* ---------- Événements ---------- */
 const actions = {
-  ...core.actions, ...act.actions, ...eq.actions, ...ann.actions, ...part.actions, ...mat.actions, ...bud.actions, ...reg.actions, ...pg.actions, ...ac.actions, ...quest.actions, ...voy.actions, ...ins.actions, ...adhs.actions, ...sec.actions, ...pa.actions, ...imp.actions, ...pwa.actions,
+  ...core.actions, ...act.actions, ...eq.actions, ...ann.actions, ...part.actions, ...mat.actions, ...bud.actions, ...reg.actions, ...pg.actions, ...ls.actions, ...ac.actions, ...quest.actions, ...voy.actions, ...ins.actions, ...adhs.actions, ...sec.actions, ...pa.actions, ...imp.actions, ...pwa.actions,
   'rech-globale': () => rechGlobale(),
   close: () => closeModal(),
   compte: () => {
@@ -191,7 +223,7 @@ async function rechGlobale() {
   <p class="sub">Choisissez un résultat pour ouvrir sa fiche.</p>`);
   const champ = $('#rg'); if (champ) champ.focus();
 }
-const changes = { ...core.changes, ...act.changes, ...ann.changes, ...part.changes, ...mat.changes, ...bud.changes, ...reg.changes, ...pg.changes, ...ac.changes, ...quest.changes, ...voy.changes, ...ins.changes };
+const changes = { ...core.changes, ...act.changes, ...ann.changes, ...part.changes, ...mat.changes, ...bud.changes, ...reg.changes, ...pg.changes, ...ls.changes, ...ac.changes, ...quest.changes, ...voy.changes, ...ins.changes };
 
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-action]'); if (!el || el.tagName === 'INPUT' && el.type === 'checkbox') return;

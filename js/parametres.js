@@ -31,7 +31,13 @@ export const DEFAUTS = {
   // Portage de repas (lot B) : nom de l'entreprise de restauration (jamais dans le code) et motifs d'organisation proposés pour une interruption ou un arrêt. Aucun motif de santé.
   portage: {
     prestataire: '',
-    motifs: ['Absence temporaire (vacances ou autre)', 'Changement de rythme de livraison', 'Demande de la personne ou de ses proches', 'Changement de lieu de vie', 'Fin du service à l\'initiative de la personne', 'Fin du service à l\'initiative du service', 'Autre motif d\'organisation']
+    motifs: ['Absence temporaire (vacances ou autre)', 'Changement de rythme de livraison', 'Demande de la personne ou de ses proches', 'Changement de lieu de vie', 'Fin du service à l\'initiative de la personne', 'Fin du service à l\'initiative du service', 'Autre motif d\'organisation'],
+    // Journal de suivi (lot B, second temps, v1.24.0) : types d'événements du quotidien (cahier §9.3). Aucun motif de santé.
+    journalTypes: ['Appel du bénéficiaire', 'Appel d\'un proche', 'Modification de livraison', 'Problème rencontré', 'Demande', 'Action réalisée']
+  },
+  // Lien social (lot B, second temps, v1.24.0) : contacts et maintien du lien avec les aînés (cahier §10). Administratrice seule. Aucune donnée de santé.
+  liensocial: {
+    motifs: ['Prise de nouvelles', 'Organisation d\'une activité', 'Demande d\'information', 'Demande d\'aide pratique', 'Invitation à une activité', 'Autre motif d\'organisation']
   },
   // Accueils (lot E) : jeunes adultes (bourse), services civiques, stagiaires. « États du dossier » = suivi administratif de la bourse (aucune information de santé).
   accueils: {
@@ -108,7 +114,10 @@ export function parametres() {
     ${num('p-pal', 'partenaires.alerteJours', 'Alerte « convention » avant l\'échéance (jours)')}</div></div>
   <div class="card" style="margin-bottom:14px"><h2 style="margin-top:0">Portage de repas</h2>
     <div class="field"><label for="p-pgp">Entreprise de restauration (prestataire)</label><input id="p-pgp" value="${esc(P('portage.prestataire'))}" placeholder="nom de l'entreprise qui livre les repas"><small class="sub">Proposé automatiquement dans les échanges avec le prestataire (Portage › Échanges). Il peut être corrigé échange par échange.</small></div>
-    ${liste('p-pgm', 'portage.motifs', 'Motifs d\'interruption ou d\'arrêt', '<b>Une par ligne.</b> <b>✔ À mettre</b> : des motifs d\'organisation (« absence temporaire », « changement de rythme de livraison », « demande de la personne »). <b>✘ À ne pas mettre</b> : tout motif de santé (hospitalisation, maladie, décès…). L\'outil organise le service, il ne suit pas les soins.')}</div>
+    ${liste('p-pgm', 'portage.motifs', 'Motifs d\'interruption ou d\'arrêt', '<b>Une par ligne.</b> <b>✔ À mettre</b> : des motifs d\'organisation (« absence temporaire », « changement de rythme de livraison », « demande de la personne »). <b>✘ À ne pas mettre</b> : tout motif de santé (hospitalisation, maladie, décès…). L\'outil organise le service, il ne suit pas les soins.')}
+    ${liste('p-pgj', 'portage.journalTypes', 'Journal de suivi : types d\'événements', 'Une par ligne (ex. appel du bénéficiaire, appel d\'un proche, modification de livraison, problème rencontré, demande, action réalisée).')}</div>
+  <div class="card" style="margin-bottom:14px"><h2 style="margin-top:0">Lien social</h2>
+    ${liste('p-lsm', 'liensocial.motifs', 'Motifs généraux des contacts', '<b>Une par ligne.</b> <b>✔ À mettre</b> : des motifs d\'organisation (« prise de nouvelles », « organisation d\'une activité », « demande d\'information »). <b>✘ À ne pas mettre</b> : tout motif de santé. Écran réservé à l\'administratrice.')}</div>
   <div class="card" style="margin-bottom:14px"><h2 style="margin-top:0">Accueils (jeunes adultes, services civiques, stagiaires)</h2>
     ${liste('p-aed', 'accueils.etatsDossier', 'États du dossier de la bourse', 'Une par ligne, dans l\'ordre de la démarche (ex. dossier à constituer, déposé, validé, bourse versée). Suivi administratif seulement.')}
     <div class="two">${num('p-aoh', 'accueils.objectifHeures', 'Objectif d\'heures proposé (bourse)')}
@@ -162,9 +171,9 @@ export const actions = {
   'param-save': async () => {
     if (!peutAdmin()) return;
     const cats = lignes('#p-cats'), bud = lignes('#p-bud'), mob = lignes('#p-mob'), ann = lignes('#p-ann'), psv = lignes('#p-psv'), pty = lignes('#p-pty');
-    const aed = lignes('#p-aed'), mdr = lignes('#p-mdr'), mca = lignes('#p-mca'), mcr = lignes('#p-mcr'), mem = lignes('#p-mem'), msa = lignes('#p-msa'), mun = lignes('#p-mun'), pgm = lignes('#p-pgm');
+    const aed = lignes('#p-aed'), mdr = lignes('#p-mdr'), mca = lignes('#p-mca'), mcr = lignes('#p-mcr'), mem = lignes('#p-mem'), msa = lignes('#p-msa'), mun = lignes('#p-mun'), pgm = lignes('#p-pgm'), pgj = lignes('#p-pgj'), lsm = lignes('#p-lsm');
     const bdi = lignes('#p-bdi'), rty = lignes('#p-rty'), rmo = lignes('#p-rmo'), qth = lignes('#p-qth');
-    if (!cats.length || !bud.length || !mob.length || !ann.length || !psv.length || !pty.length || !mca.length || !mcr.length || !mem.length || !msa.length || !mun.length || !mdr.length || !pgm.length || !aed.length || !bdi.length || !rty.length || !rmo.length || !qth.length) return toast('Chaque liste doit contenir au moins un choix.');
+    if (!cats.length || !bud.length || !mob.length || !ann.length || !psv.length || !pty.length || !mca.length || !mcr.length || !mem.length || !msa.length || !mun.length || !mdr.length || !pgm.length || !pgj.length || !lsm.length || !aed.length || !bdi.length || !rty.length || !rmo.length || !qth.length) return toast('Chaque liste doit contenir au moins un choix.');
     await sauver('parametres', {
       id: 'general', nomOutil: $('#p-nom').value.trim() || DEFAUTS.nomOutil, nomService: $('#p-svc').value.trim() || DEFAUTS.nomService,
       affiche: { lieu: $('#p-aff-l').value.trim(), pied: $('#p-aff-p').value.trim() || DEFAUTS.affiche.pied },
@@ -174,7 +183,8 @@ export const actions = {
       adhesion: { montantDefaut: val('#p-cot', 'adhesion.montantDefaut'), relanceMois: val('#p-rel', 'adhesion.relanceMois'), modes: mdr },
       verification: { mois: val('#p-ver', 'verification.mois') },
       partenaires: { services: psv, types: pty, reunionMensuelle: $('#p-reu').value.trim() || DEFAUTS.partenaires.reunionMensuelle, alerteJours: val('#p-pal', 'partenaires.alerteJours') },
-      portage: { prestataire: $('#p-pgp').value.trim(), motifs: pgm },
+      portage: { prestataire: $('#p-pgp').value.trim(), motifs: pgm, journalTypes: pgj },
+      liensocial: { motifs: lsm },
       accueils: { etatsDossier: aed, objectifHeures: val('#p-aoh', 'accueils.objectifHeures'), montantBourse: val('#p-amb', 'accueils.montantBourse'), seuilRetardHeures: val('#p-ash', 'accueils.seuilRetardHeures'), alerteJours: val('#p-aaj', 'accueils.alerteJours') },
       materiel: { categories: mca, categoriesReserves: mcr, emplacements: mem, saisons: msa, unites: mun, alertePeremptionJours: val('#p-mpe', 'materiel.alertePeremptionJours') },
       budgets: { dispositifs: bdi, seuilAlertePourcent: val('#p-bse', 'budgets.seuilAlertePourcent') },

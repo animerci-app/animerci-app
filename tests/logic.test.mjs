@@ -943,3 +943,45 @@ t('lot G : écran Activités — regroupement par catégorie, catégories ET act
   assert.deepEqual(blocs[0][1].map(a => a.nom), ['Aquarelle', 'Élan créatif', 'Été indien'], 'activités d\'une même catégorie triées par ordre alphabétique (accents inclus)');
   assert.deepEqual(blocs[2][1].map(a => a.nom), ['Atelier bois', 'Sans nom']);
 });
+
+/* ---------- Lot B, second temps (v1.24.0) : journal de suivi du portage et lien social ---------- */
+t('lot B second temps : journal de suivi du portage — validation et alertes de suites à donner', () => {
+  assert.equal(L.erreurJournalPortage({ date: '', type: 'Appel du bénéficiaire' }, ['Appel du bénéficiaire']), 'Indiquez la date.');
+  assert.equal(L.erreurJournalPortage({ date: '2026-03-01', type: 'Inconnu' }, ['Appel du bénéficiaire']), 'Choisissez le type (liste réglable dans Paramètres).');
+  assert.equal(L.erreurJournalPortage({ date: '2026-03-01', type: 'Appel du bénéficiaire' }, ['Appel du bénéficiaire']), '');
+  const journal = [{ id: '1', suiteAFaire: true }, { id: '2', suiteAFaire: false }, { id: '3', suiteAFaire: true }];
+  const A = L.alertesJournalPortage(journal);
+  assert.equal(A.length, 1); assert.ok(A[0].texte.includes('2 suites'));
+  assert.deepEqual(L.alertesJournalPortage([]), []);
+});
+t('lot B second temps : lien social — validation d\'un contact', () => {
+  assert.equal(L.erreurContactLienSocial({ date: '2026-03-01', type: 'appel-entrant', seniorId: '' }), 'Choisissez la personne concernée.');
+  assert.equal(L.erreurContactLienSocial({ date: '', type: 'appel-entrant', seniorId: 's1' }), 'Indiquez la date.');
+  assert.equal(L.erreurContactLienSocial({ date: '2026-03-01', type: 'inconnu', seniorId: 's1' }), 'Choisissez le type de contact.');
+  assert.equal(L.erreurContactLienSocial({ date: '2026-03-01', type: 'appel-entrant', seniorId: 's1' }), '');
+});
+t('lot B second temps : lien social — statistiques distinguent contacts, personnes distinctes et interventions (cahier §10, pas de double comptage)', () => {
+  const contacts = [
+    { id: '1', date: '2026-02-01', type: 'appel-entrant', seniorId: 's1', duree: 10, action: 'Rappelé pour confirmer', motif: 'Prise de nouvelles' },
+    { id: '2', date: '2026-02-05', type: 'appel-entrant', seniorId: 's1', duree: 5, motif: 'Prise de nouvelles' }, // même personne, 2e contact, sans action ni suite
+    { id: '3', date: '2026-02-10', type: 'visite', seniorId: 's2', duree: 20, suite: 'Rappeler la semaine prochaine', motif: 'Invitation à une activité' },
+    { id: '4', date: '2026-03-01', type: 'rdv', seniorId: 's3', duree: 30, motif: 'Demande d\'information' },
+    { id: '5', date: '2025-12-01', type: 'appel-sortant', seniorId: 's4', duree: 15, motif: 'Autre motif d\'organisation' } // hors année 2026
+  ];
+  const s = L.statsLienSocial(contacts, 2026);
+  assert.equal(s.contacts, 4, 'quatre contacts en 2026 (le 5e est de 2025)');
+  assert.equal(s.personnesDistinctes, 3, 's1 compte une seule fois malgré ses deux contacts');
+  assert.equal(s.interventions, 2, 'seuls les contacts 1 (action) et 3 (suite) comptent comme intervention');
+  assert.equal(s.appels, 2); assert.equal(s.visites, 1); assert.equal(s.rdv, 1);
+  assert.equal(s.tempsConsacre, 10 + 5 + 20 + 30);
+  assert.equal(s.motifsPrincipaux[0][0], 'Prise de nouvelles'); assert.equal(s.motifsPrincipaux[0][1], 2);
+  const vide = L.statsLienSocial([], 2026);
+  assert.equal(vide.contacts, 0); assert.equal(vide.personnesDistinctes, 0); assert.equal(vide.interventions, 0);
+});
+t('lot B second temps : lien social — tableaux d\'export reprennent les mêmes chiffres', () => {
+  const contacts = [{ id: '1', date: '2026-02-01', type: 'appel-entrant', seniorId: 's1', duree: 10, action: 'Rappelé', motif: 'Prise de nouvelles' }];
+  const T = L.tableauxLienSocial(contacts, 2026, () => 'Mme Dupont');
+  assert.equal(T.length, 2);
+  assert.ok(T[0].rows[0].includes('Mme Dupont'));
+  assert.deepEqual(T[1].rows[0], ['Nombre de contacts', 1]);
+});

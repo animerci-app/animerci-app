@@ -130,6 +130,14 @@ service cloud.firestore {
       allow read, create, update: if equipePortage();
       allow delete: if estAdmin();
     }
+    // Journal de suivi du portage (cahier §9.3, lot B second temps, v1.24.0) : mêmes accès que le reste du Portage. Aucune donnée de santé.
+    match /portageJournal/{id} {
+      allow read, create, update: if equipePortage();
+      allow delete: if estAdmin();
+    }
+
+    // Lien social (cahier §10, lot B second temps, v1.24.0) : administratrice seule, sans aucune exception (contrairement au reste du Portage), car il touche aux fiches complètes des personnes. Aucune donnée de santé.
+    match /lienSocial/{id} { allow read, write: if estAdmin(); }
 
     // Budgets, dépenses et régie (lot D, v1.21.0). Suivi interne (ne remplace pas le logiciel comptable officiel) : aucune donnée de santé.
     // L'équipe (admin, et intervenant·es/bénévoles dont l'accès « Budgets et régie » est coché) lit, crée et modifie ; chaque ligne garde « par ». Seule l'administratrice supprime.

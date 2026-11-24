@@ -393,7 +393,7 @@ export function programme(activites, du, au) {
   return { mois, regulieres };
 }
 // Alertes de l'accueil, calculées sur les données déjà chargées (aucune lecture en plus)
-export function alertesAccueil({ activites, inscriptions, seances, taches, auj, echanges = [], conventions = [], joursConv = 30, materiel = [], emprunts = [], joursPeremption = 30, fiches = null, portages = [], echangesPortage = [], accueils = [], benevoles = [], categorieBenevole = '', seuilHeures = 10, depenses = [], budgets = [], initiauxBudgets = {}, seuilPourcentBudget = 10, regie = [], joursAlerteRegie = 15 }) {
+export function alertesAccueil({ activites, inscriptions, seances, taches, auj, echanges = [], conventions = [], joursConv = 30, materiel = [], emprunts = [], joursPeremption = 30, fiches = null, portages = [], echangesPortage = [], journalPortage = [], accueils = [], benevoles = [], categorieBenevole = '', seuilHeures = 10, depenses = [], budgets = [], initiauxBudgets = {}, seuilPourcentBudget = 10, regie = [], joursAlerteRegie = 15 }) {
   const A = [], nomAct = id => (activites.find(a => a.id === id) || {}).nom;
   const ouvertes = taches.filter(t => !t.done);
   const retard = ouvertes.filter(t => t.echeance && t.echeance < auj).sort((x, y) => x.echeance.localeCompare(y.echeance));
@@ -408,6 +408,7 @@ export function alertesAccueil({ activites, inscriptions, seances, taches, auj, 
   A.push(...alertesMateriel({ materiel, emprunts, auj, joursPeremption }));
   if (fiches) A.push(...alertesFiches(fiches));
   A.push(...alertesPortage({ portages, echanges: echangesPortage, auj }));
+  A.push(...alertesJournalPortage(journalPortage));
   A.push(...alertesAccueils({ accueils, benevoles, categorieBenevole, auj, joursConv, seuilHeures }));
   A.push(...alertesBudgets({ depenses, budgets, initiaux: initiauxBudgets, seuilPourcent: seuilPourcentBudget }));
   A.push(...alertesRegie({ regie, auj, joursAlerte: joursAlerteRegie }));
@@ -1336,5 +1337,63 @@ export function tableauxVoyages(voyages) {
       rows: lignes.map(v => [fmtDate(v.date), v.destination || '', v.programme || '', v.prestataireNom || '', v.transporteurNom || '', v.participants || '', v.cout === '' || v.cout == null ? '' : fmtMontant(num(v.cout)), v.budget || '', v.documentOu || '', v.retours || '']) },
     { nom: 'Comparaison annuelle', titre: 'Comparaison d\'une année sur l\'autre', cols: ['Année', 'Nombre de sorties', 'Coût total', 'Coût moyen par participant'],
       rows: comp.map(e => [e.an, e.nb, fmtMontant(e.cout), fmtMontant(e.coutMoyenParticipant)]) }
+  ];
+}
+
+/* ---------- Lot B, second temps (v1.24.0) : journal de suivi du portage (§9.3) et lien social (§10). Aucune donnée de santé. ---------- */
+/** Message d'erreur (ou '' si tout va bien) pour une entrée du journal de suivi du portage. */
+export function erreurJournalPortage({ date, type }, types = []) {
+  if (!DATE_ISO.test(date || '')) return 'Indiquez la date.';
+  if (!types.includes(type)) return 'Choisissez le type (liste réglable dans Paramètres).';
+  return '';
+}
+/** Alertes de l'accueil : suites à donner inscrites dans le journal de suivi du portage (vient s'ajouter à celles des échanges avec le prestataire). */
+export function alertesJournalPortage(journal = []) {
+  const A = [], suites = journal.filter(j => j.suiteAFaire);
+  if (suites.length) A.push({ niveau: 'info', texte: `Portage : ${suites.length} suite${suites.length > 1 ? 's' : ''} à donner (journal de suivi)`, vue: 'portage', tab: 'journal' });
+  return A;
+}
+
+export const TYPES_CONTACT_LIEN_SOCIAL = { 'appel-entrant': 'Appel entrant', 'appel-sortant': 'Appel sortant', visite: 'Visite spontanée au bureau', rdv: 'Rendez-vous', echange: 'Échange individuel', demande: 'Demande particulière' };
+export const STATUTS_CONTACT_LIEN_SOCIAL = { 'a-traiter': 'À traiter', 'en-cours': 'En cours', cloture: 'Clôturé' };
+/** Message d'erreur (ou '' si tout va bien) pour un contact de lien social. */
+export function erreurContactLienSocial({ date, type, seniorId }, motifs = []) {
+  if (!seniorId) return 'Choisissez la personne concernée.';
+  if (!DATE_ISO.test(date || '')) return 'Indiquez la date.';
+  if (!TYPES_CONTACT_LIEN_SOCIAL[type]) return 'Choisissez le type de contact.';
+  return '';
+}
+/**
+ * Statistiques annuelles du lien social (cahier §10). Distingue bien le nombre de CONTACTS (une ligne = un contact), le nombre de
+ * PERSONNES DISTINCTES concernées et le nombre d'INTERVENTIONS (contacts avec une action réalisée ou une suite donnée), pour éviter
+ * tout double comptage entre ces trois notions.
+ */
+export function statsLienSocial(contacts, an) {
+  const rows = (contacts || []).filter(c => c.date && c.date.slice(0, 4) === String(an));
+  const zero = () => Object.fromEntries(Object.keys(TYPES_CONTACT_LIEN_SOCIAL).map(k => [k, 0]));
+  const parType = zero(), parMois = Array.from({ length: 12 }, zero), parMotif = {}, personnes = new Set();
+  let interventions = 0, temps = 0;
+  for (const c of rows) {
+    if (c.type in parType) { parType[c.type]++; parMois[Number(c.date.slice(5, 7)) - 1][c.type]++; }
+    if (c.seniorId) personnes.add(c.seniorId);
+    if (c.action || c.suite) interventions++;
+    temps += num(c.duree);
+    const mo = c.motif || '(sans motif)'; parMotif[mo] = (parMotif[mo] || 0) + 1;
+  }
+  return {
+    contacts: rows.length, personnesDistinctes: personnes.size, interventions, tempsConsacre: temps,
+    appels: (parType['appel-entrant'] || 0) + (parType['appel-sortant'] || 0), visites: parType.visite || 0, rdv: parType.rdv || 0,
+    parType, parMois, motifsPrincipaux: Object.entries(parMotif).sort((a, b) => b[1] - a[1]).slice(0, 5)
+  };
+}
+/** Tableaux d'export (Excel, PDF) pour le lien social. */
+export function tableauxLienSocial(contacts, an, nomSenior) {
+  const rows = [...(contacts || [])].filter(c => c.date && c.date.slice(0, 4) === String(an)).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  const s = statsLienSocial(contacts, an);
+  return [
+    { nom: 'Contacts', titre: `Lien social : contacts ${an}`, cols: ['Date', 'Heure', 'Personne', 'Type', 'Motif', 'Durée (min)', 'Action réalisée', 'Suite à donner', 'Statut', 'Saisi par'],
+      rows: rows.map(c => [fmtDate(c.date), c.heure || '', nomSenior(c.seniorId), TYPES_CONTACT_LIEN_SOCIAL[c.type] || c.type || '', c.motif || '', c.duree || '', c.action || '', c.suite || '', STATUTS_CONTACT_LIEN_SOCIAL[c.statut] || c.statut || '', c.par || '']) },
+    { nom: 'Chiffres de l\'année', titre: `Lien social : chiffres ${an}`, cols: ['Indicateur', 'Valeur'],
+      rows: [['Nombre de contacts', s.contacts], ['Personnes distinctes', s.personnesDistinctes], ['Interventions', s.interventions], ['Appels', s.appels], ['Visites', s.visites], ['Rendez-vous', s.rdv], ['Temps consacré (minutes)', s.tempsConsacre]] }
   ];
 }
