@@ -1,2 +1,2 @@
 // Numéro de version de l'outil (voir « Journal des versions » dans README.md).
-export const VERSION = '1.25.0';
+export const VERSION = '1.26.0';

@@ -14,13 +14,24 @@ const inscriptionsDe = id => S.cache.inscriptions.filter(i => i.activiteId === i
 const retenusDe = id => inscriptionsDe(id).filter(i => RETENUS.includes(i.statut));
 const mesActivites = () => peutAdmin() ? S.cache.activites : S.cache.activites.filter(a => (S.user.activites || []).includes(a.id));
 
+// Aucune personne du tout rattachée à l'activité (ni intervenant·e, ni partenaire, ni bénévole référent·e, ni autres bénévoles)
+const sansRattachement = a => !a.interv && !a.partenaire && !a.benevole && !(a.autresBenevoles && a.autresBenevoles.trim());
+// Qui est rattaché·e, pour l'afficher directement sur la carte sans ouvrir la fiche : intervenant·e, puis partenaire, puis bénévole référent·e (avec « +N » s'il y en a plusieurs) ; à défaut, le premier nom des autres bénévoles ; sinon un repère « À rattacher ».
+function quiActivite(a) {
+  const noms = [a.interv, a.partenaire, a.benevole].filter(Boolean);
+  if (noms.length) return `<div class="meta qui">${esc(noms[0])}${noms.length > 1 ? ` <span class="sub">+${noms.length - 1}</span>` : ''}</div>`;
+  const premier = a.autresBenevoles && a.autresBenevoles.split(',').map(s => s.trim()).filter(Boolean)[0];
+  if (premier) return `<div class="meta qui">${esc(premier)}</div>`;
+  return `<div class="meta qui"><span class="pill p-warn">À rattacher</span></div>`;
+}
+
 /* ============ LISTE ============ */
 // Une carte par activité (places prises côté serveur pour l'administratrice ; inscriptions déjà chargées pour l'intervenant·e)
 function carteActivite(a, admin) {
   const cp = admin ? (S.compteurs[a.id] || { r: 0, att: 0 }) : null, enCours = admin && !S.compteurs[a.id];
   const r = cp ? cp.r : retenusDe(a.id).length, att = cp ? cp.att : inscriptionsDe(a.id).filter(i => i.statut === 'attente').length, full = r >= a.cap, pct = Math.min(100, Math.round(r / a.cap * 100));
   return `<button class="act" data-action="open-act" data-id="${a.id}">
-    <div style="display:flex;gap:12px;align-items:center"><span class="cat ${classeCat(a.cat)}">${esc((a.cat || '?')[0])}</span><div><h3>${esc(a.nom)}</h3><div class="meta">${esc(a.jour || '')}${a.date ? ' · ' + L.fmtDate(a.date) : ''}${a.frequence ? `<br>${esc(a.frequence)}` : ''}</div></div></div>
+    <div style="display:flex;gap:12px;align-items:center"><span class="cat ${classeCat(a.cat)}">${esc((a.cat || '?')[0])}</span><div><h3>${esc(a.nom)}</h3><div class="meta">${esc(a.jour || '')}${a.date ? ' · ' + L.fmtDate(a.date) : ''}${a.frequence ? `<br>${esc(a.frequence)}` : ''}</div>${quiActivite(a)}</div></div>
     <div class="bar ${full ? 'full' : ''}"><i style="width:${pct}%"></i></div>
     <div style="display:flex;justify-content:space-between;align-items:center"><span><b>${enCours ? '…' : r}</b> / ${a.cap} places</span>
     ${enCours ? '' : att ? `<span class="pill p-warn">${att} en attente</span>` : full ? '<span class="pill p-crit">Complet</span>' : `<span class="pill p-ok">${a.cap - r} libres</span>`}</div></button>`;
@@ -42,13 +53,16 @@ function groupesParCategorie(rows) {
 export function activites() {
   const admin = peutAdmin();
   const rows = mesActivites();
-  const blocs = groupesParCategorie(rows);
+  const manquants = admin ? rows.filter(sansRattachement) : [];
+  const visibles = (admin && S.filtreSansRattachement) ? manquants : rows;
+  const blocs = groupesParCategorie(visibles);
   return `<div class="top"><div><h1>${admin ? 'Activités' : 'Mes activités'}</h1><p>Touchez une activité pour gérer les inscriptions et faire l'appel.</p></div>
     ${admin ? '<button class="btn" data-action="act-form">+ Nouvelle activité</button><button class="btn sec" data-action="importer" data-cible="activites">Importer une liste</button>' : ''}</div>
   ${rows.length ? champRecherche({ id: 'rech-act', label: 'Chercher une activité', texte: '', aide: 'Tapez un nom, un jour ou un horaire ; choisissez une suggestion (clic ou touche Entrée) pour ouvrir la fiche.', mode: 'action', recents: 'activites', placeholder: 'Chercher une activité (nom, jour, horaire…)…',
     items: () => rows.map(itemActivite), onChoose: o => { if (o) { const el = $('#rech-act'); if (el) el.value = ''; go('activite', { actId: o.id }); } } }) : ''}
-  ${rows.length ? blocs.map(([cat, liste]) => `<h2 class="cat-titre" style="margin:18px 0 8px">${esc(cat)}</h2><div class="grid acts">${liste.map(a => carteActivite(a, admin)).join('')}</div>`).join('')
-    : `<div class="card"><div class="empty"><b>Aucune activité</b>${admin ? 'Créez la première avec le bouton en haut.' : 'Aucune activité ne vous est attribuée pour le moment.'}</div></div>`}`;
+  ${admin && rows.length ? `<div class="filters"><button data-action="filtre-rattachement" aria-pressed="${!!S.filtreSansRattachement}">Sans personne rattachée${manquants.length ? ` (${manquants.length})` : ''}</button></div>` : ''}
+  ${visibles.length ? blocs.map(([cat, liste]) => `<h2 class="cat-titre" style="margin:18px 0 8px">${esc(cat)}</h2><div class="grid acts">${liste.map(a => carteActivite(a, admin)).join('')}</div>`).join('')
+    : `<div class="card"><div class="empty"><b>${S.filtreSansRattachement ? 'Aucune activité sans personne rattachée' : 'Aucune activité'}</b>${S.filtreSansRattachement ? 'Toutes les activités ont au moins une personne rattachée.' : admin ? 'Créez la première avec le bouton en haut.' : 'Aucune activité ne vous est attribuée pour le moment.'}</div></div>`}`;
 }
 
 // modele : activité à copier (sans ses inscriptions ni ses appels) ; la date est à saisir de nouveau
@@ -350,6 +364,7 @@ export const actions = {
   'open-act': el => go('activite', { actId: el.dataset.id }),
   'act-form': el => actForm(el.dataset.id),
   'act-dupliquer': el => actForm(null, actDe(el.dataset.id)),
+  'filtre-rattachement': () => { S.filtreSansRattachement = !S.filtreSansRattachement; render(); },
   tab: el => { S.tab = el.dataset.v; render(); },
   'ins-form': () => insForm(),
   proposer: () => proposer(),
