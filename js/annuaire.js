@@ -88,7 +88,7 @@ function listeContacts() {
   if (q) { const ids = new Set(filtrer(rows.map(itemContact), q, 100000).liste.map(x => x.id)); rows = rows.filter(c => ids.has(c.id)); }
   if (!rows.length) return `<div class="card"><div class="empty"><b>${q ? 'Aucun résultat' : 'Aucun contact ici'}</b>${q ? 'Essayez un autre nom, un prénom ou un métier.' : 'Ajoutez-en avec le bouton, importez une liste, ou ajoutez directement depuis un formulaire (activité, tâche).'}</div></div>`;
   return rows.map(c => `<button class="cand" data-action="contact-form" data-id="${esc(c.id)}"><span class="av">${esc(initiales(nomComplet(c)))}</span>
-    <span style="flex:1"><b>${esc(nomAffiche(c))}</b><span class="why">${c.precision ? `<span class="pill p-rose">${esc(c.precision)}</span>` : ''}${c._derive ? '<span class="pill p-warn">à vérifier</span>' : ''}${c.service ? `<span class="pill p-ok">${esc(c.service)}</span>` : ''}${c.tel ? `<span class="pill p-bleu">${esc(c.tel)}</span>` : ''}${c.email ? `<span class="pill p-rose">${esc(c.email)}</span>` : ''}${c.note ? `<span class="sub">${esc(c.note)}</span>` : ''}${c.inactif ? '<span class="pill p-rose">inactif</span>' : ''}${(c.dispoJours || []).length ? `<span class="pill p-ok">${esc(c.dispoJours.slice().sort((x, y) => x - y).map(k => JOURS_PORTAGE[k].slice(0, 3).toLowerCase() + '.').join(' '))}</span>` : ''}${c.competences ? `<span class="sub">${esc(c.competences)}</span>` : ''}</span></span>
+    <span style="flex:1"><b>${esc(nomAffiche(c))}</b><span class="why">${c.precision ? `<span class="pill p-rose">${esc(c.precision)}</span>` : ''${!c.organisme && !c.nom ? '<span class="pill p-warn">À compléter (nom)</span>' : ''}}${c._derive ? '<span class="pill p-warn">à vérifier</span>' : ''}${c.service ? `<span class="pill p-ok">${esc(c.service)}</span>` : ''}${c.tel ? `<span class="pill p-bleu">${esc(c.tel)}</span>` : ''}${c.email ? `<span class="pill p-rose">${esc(c.email)}</span>` : ''}${c.note ? `<span class="sub">${esc(c.note)}</span>` : ''}${c.inactif ? '<span class="pill p-rose">inactif</span>' : ''}${(c.dispoJours || []).length ? `<span class="pill p-ok">${esc(c.dispoJours.slice().sort((x, y) => x - y).map(k => JOURS_PORTAGE[k].slice(0, 3).toLowerCase() + '.').join(' '))}</span>` : ''}${c.competences ? `<span class="sub">${esc(c.competences)}</span>` : ''}</span></span>
     <span class="pill p-warn">${esc(c.categorie || '—')}</span></button>`).join('');
 }
 export function annuaire() {
@@ -119,7 +119,8 @@ function contactForm(id) {
   ${c._derive ? '<div class="note">Le prénom et le nom ont été séparés automatiquement : vérifiez-les puis enregistrez.</div>' : ''}
   <div class="two"><div class="field"><label for="c1">Nom <small class="sub">(patronyme)</small></label><input id="c1" value="${esc(c.nom || '')}" autocomplete="off"></div>
   <div class="field" id="c7z"><label for="c7">Prénom</label><input id="c7" value="${esc(c.prenom || '')}" autocomplete="off"></div></div>
-  <label class="chk" style="margin:0 0 8px"><input type="checkbox" id="c8" ${c.organisme ? 'checked' : ''}> C'est un organisme (association, entreprise…) : pas de prénom</label>
+  <p class="sub" id="c1z">Vous pouvez n'indiquer que le nom ou que le prénom pour l'instant (par exemple si le nom de famille n'est pas encore connu), et compléter l'autre dès que possible.</p>
+    <label class="chk" style="margin:0 0 8px"><input type="checkbox" id="c8" ${c.organisme ? 'checked' : ''}> C'est un organisme (association, entreprise…) : pas de prénom</label>
   <div class="field"><label for="c6">Métier, activité ou organisme <small class="sub">(précision ; obligatoire si une autre personne porte le même nom)</small></label><input id="c6" value="${esc(c.precision || '')}" placeholder="Fleuriste, musicien, association…" autocomplete="off"></div>
   <div class="field"><label for="c2">Catégorie</label><select id="c2">${toutes.map(k => `<option ${c.categorie === k ? 'selected' : ''}>${esc(k)}</option>`).join('')}</select></div>
   <div class="two"><div class="field"><label for="c3">Téléphone</label><input id="c3" type="tel" value="${esc(c.tel || '')}"></div>
@@ -140,10 +141,11 @@ function contactForm(id) {
     <div class="field"><label for="c12">Projets communs</label><input id="c12" maxlength="300" value="${esc(c.projets || '')}"></div>
     <div class="field"><label for="c13">Suite à donner</label><input id="c13" maxlength="200" value="${esc(c.suite || '')}"></div>${AVERT_PART}</details>
   <div class="quick" style="margin-top:14px"><button class="btn" id="saveC">Enregistrer</button><button class="btn ghost" data-action="close">Annuler</button>${id ? '<button class="btn sec" data-action="part-fiche" data-id="' + esc(id) + '">Voir le suivi (échanges, conventions)</button><button class="btn ghost" id="delC" style="margin-left:auto">Supprimer</button>' : ''}</div>`);
-  const maj = () => { $('#c7z').style.display = $('#c8').checked ? 'none' : ''; $('#blocBen').style.display = $('#c2').value === P('annuaire.rubriques.activiteBenevole') ? '' : 'none'; }; $('#c8').onchange = maj; $('#c2').onchange = maj; maj();
+  const maj = () => { $('#c7z').style.display = $('#c8').checked ? 'none' : ''; $('#c1z').style.display = $('#c8').checked ? 'none' : ''; $('#blocBen').style.display = $('#c2').value === P('annuaire.rubriques.activiteBenevole') ? '' : 'none'; }; $('#c8').onchange = maj; $('#c2').onchange = maj; maj();
   $('#saveC').onclick = async () => {
-    const nom = $('#c1').value.trim(); if (!nom) return toast('Le nom est nécessaire.');
-    const organisme = $('#c8').checked, prenom = organisme ? '' : $('#c7').value.trim();
+    if (organisme && !nom) return toast('Le nom de l\'organisme est nécessaire.');
+        if (!organisme && !nom && !prenom) return toast('Le nom ou le prénom est nécessaire : complétez au moins l\'un des deux.');
+    const organisme = $('#c8').checked, nom = $('#c1').value.trim(), prenom = organisme ? '' : $('#c7').value.trim();
     const categorie = $('#c2').value, precision = $('#c6').value.trim(), cle = cleNom(nomComplet({ nom, prenom }));
     // homonymes : même nom complet dans la même catégorie → la précision est obligatoire et doit les distinguer
     const memes = (await store.lire('contacts', ['categorie', '==', categorie])).map(normContact).filter(x => x.id !== id && cleNom(nomComplet(x)) === cle);
