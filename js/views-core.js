@@ -72,12 +72,13 @@ function listeSeniors() {
   return rows.map(s => {
     const a = L.age(s.naissance), ok = L.adhesionAJour(s);
     return `<button class="cand" data-action="senior-form" data-id="${s.id}">
-      <span class="av">${esc(initiales(s.prenom + ' ' + s.nom))}</span>
+      <span class="av">${esc(initiales(L.nomComplet(s)))}</span>
       <span style="flex:1"><b>${esc(L.nomAffiche(s))}</b><span class="why">
         ${s.nomNaissance ? `<span class="pill p-bleu">née ${esc(s.nomNaissance)}</span>` : ''}
         ${a != null ? `<span class="pill p-rose">${a} ans</span>` : ''}
         <span class="pill ${s.statut === 'resident' ? 'p-bleu' : 'p-rose'}">${L.libelleStatut(s.statut)}</span>
         ${s.appartement && s.statut === 'resident' ? `<span class="pill">Appt ${esc(s.appartement)}</span>` : ''}
+        ${!s.nom || !s.prenom ? '<span class="pill p-warn">À compléter (nom ou prénom)</span>' : ''}
         ${s.prenomAConfirmer ? '<span class="pill p-warn">Prénom à confirmer</span>' : ''}
         ${s.portage ? `<span class="pill p-bleu">Portage : ${esc(L.libelleFrequence(s.portage))}</span>` : ''}
         ${L.lieuDeVie(s, P('residence.nom')) ? `<span class="pill">${esc(L.lieuDeVie(s, P('residence.nom')))}</span>` : ''}
@@ -109,10 +110,11 @@ function seniorForm(id) {
   const annees = [...new Set([...histo.map(a => a.annee), anCour, L.anneeCible(aujourdhui(), P('adhesion.relanceMois'))])].sort((a, b) => b - a);
   const adhDe = an => histo.find(a => a.annee === an) || { annee: an, date: aujourdhui(), montant: P('adhesion.montantDefaut'), paye: false, mode: '', datePaiement: '' };
   const adh = adhDe(anCour), modes = P('adhesion.modes');
-  modal(`<h2>${id ? 'Fiche de ' + esc(s.prenom) : 'Nouvelle personne'}</h2>
+  modal(`<h2>${id ? 'Fiche de ' + esc(L.nomComplet(s)) : 'Nouvelle personne'}</h2>
   <div class="two"><div class="field"><label for="n1">Prénom</label><input id="n1" value="${esc(s.prenom || '')}" autocomplete="off"></div>
   <div class="field"><label for="n2">Nom</label><input id="n2" value="${esc(s.nom || '')}" autocomplete="off"></div></div>
-  <div class="field"><label for="n10">Nom de jeune fille <small class="sub">(facultatif, pour les dames)</small></label><input id="n10" value="${esc(s.nomNaissance || '')}" autocomplete="off"></div>
+  <p class="sub">Vous pouvez n'indiquer que le prénom ou que le nom pour l'instant, et compléter l'autre dès que possible.</p>
+    <div class="field"><label for="n10">Nom de jeune fille <small class="sub">(facultatif, pour les dames)</small></label><input id="n10" value="${esc(s.nomNaissance || '')}" autocomplete="off"></div>
   <div class="two"><div class="field"><label for="n3">Date de naissance</label><input id="n3" type="date" value="${esc(s.naissance || '')}"></div>
   <div class="field"><label for="n4">Sexe (pour les statistiques)</label><select id="n4"><option value="" ${!s.sexe ? 'selected' : ''}>Non précisé</option><option value="F" ${s.sexe === 'F' ? 'selected' : ''}>Femme</option><option value="H" ${s.sexe === 'H' ? 'selected' : ''}>Homme</option></select></div></div>
   <div class="field"><label for="n5">Statut</label><select id="n5"><option value="adherent" ${s.statut === 'adherent' ? 'selected' : ''}>Adhérent·e</option><option value="resident" ${s.statut === 'resident' ? 'selected' : ''}>Résident·e (adhésion comprise dans le loyer)</option><option value="autre" ${s.statut === 'autre' ? 'selected' : ''}>Autre public</option></select></div>
@@ -161,12 +163,12 @@ function seniorForm(id) {
   $('#n13').onchange = majPortage; majPortage();
   $('#saveSenior').onclick = async () => {
     const nom = $('#n2').value.trim(), prenom = $('#n1').value.trim();
-    if (!nom || !prenom) return toast('Le prénom et le nom sont nécessaires.');
+    if (!nom && !prenom) return toast('Le prénom ou le nom est nécessaire : complétez au moins l\'un des deux.');
     const statut = $('#n5').value, naissance = $('#n3').value;
     // homonymes : même prénom + nom qu'une autre fiche → la date de naissance les distingue (obligatoire)
     const autres = S.cache.seniors.filter(x => x.id !== id), nomNaissance = $('#n10').value.trim(), memes = L.homonymes({ id, prenom, nom, nomNaissance }, autres);
     if (memes.length && !naissance) return toast('Une autre personne porte le même nom : renseignez la date de naissance pour les distinguer.');
-    if (memes.some(x => x.naissance && x.naissance === naissance)) return toast(`${prenom} ${nom}, née le ${L.fmtDate(naissance)}, est déjà enregistrée. Si ce sont bien deux personnes différentes, ajoutez par exemple un second prénom au nom pour les distinguer.`);
+    if (memes.some(x => x.naissance && x.naissance === naissance)) return toast(`${L.nomComplet({ prenom, nom })}, née le ${L.fmtDate(naissance)}, est déjà enregistrée. Si ce sont bien deux personnes différentes, ajoutez par exemple un second prénom au nom pour les distinguer.`);
     const doc = { ...(id ? { id } : {}), nom, nomNaissance, prenom, naissance, sexe: $('#n4').value, statut, adresse: statut === 'resident' ? '' : $('#n6').value.trim(), commune: statut === 'resident' ? '' : $('#n11').value.trim(), prenomAConfirmer: $('#n12').checked, appartement: statut === 'resident' ? $('#n15').value.trim() : '', portage: $('#n13').checked ? { jours: [...document.querySelectorAll('.pj:checked')].map(c => Number(c.value)), precision: $('#n14').value.trim() } : null, telFixe: $('#n7').value.trim(), telPortable: $('#n16').value.trim(), email: $('#n17').value.trim(), quartier: $('#n18').value.trim(), entreeLe: $('#n19').value, infosOrga: $('#n20').value.trim(),
       proches: [0, 1, 2].map(k => ({ nom: $(`#pr${k}n`).value, lien: $(`#pr${k}l`).value, tel: $(`#pr${k}t`).value })),
       verifieLe: s.verifieLe || '', verifiePar: s.verifiePar || '',
@@ -193,7 +195,7 @@ function seniorForm(id) {
     }
     closeModal();
   };
-  if (id) $('#delSenior').onclick = () => confirmer('Supprimer cette fiche ?', `${s.prenom} ${s.nom} sera retiré·e de la liste, de ses inscriptions et de ses fiches de sortie. Les appels déjà validés restent dans les bilans.`, 'Supprimer', async () => {
+  if (id) $('#delSenior').onclick = () => confirmer('Supprimer cette fiche ?', `${L.nomComplet(s)} sera retiré·e de la liste, de ses inscriptions et de ses fiches de sortie. Les appels déjà validés restent dans les bilans.`, 'Supprimer', async () => {
     const liens = {}; for (const col of ['inscriptions', 'fiches']) liens[col] = await store.lire(col, ['seniorId', '==', id]);
     let docsPortage = []; try { docsPortage = await store.lire('portage', ['seniorId', '==', id]); } catch (e) { /* module portage non encore autorisé par les règles : rien à retirer */ }
     await mettreCorbeille('seniors', s, { inscriptions: liens.inscriptions, portage: docsPortage });
