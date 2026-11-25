@@ -178,7 +178,7 @@ export function homonymes(s, tous) {
 }
 /** Nom affiché d'une personne : « Prénom Nom », complété de la naissance seulement s'il existe un·e homonyme. */
 export function nomSenior(s, tous) {
-  const base = `${s.prenom} ${s.nom}`, h = homonymes(s, tous);
+  const base = `${s.prenom} ${s.nom}`.trim(), h = homonymes(s, tous);
   if (!h.length) return base;
   if (!s.naissance) return `${base} (naissance à renseigner)`;
   const an = String(s.naissance).slice(0, 4);
@@ -205,7 +205,11 @@ export function trouverContact(liste, valeur, valeurId) {
 /** Nom complet « Prénom Nom » d'un contact (ou d'une personne). */
 export const nomComplet = x => [x.prenom, x.nom].filter(Boolean).join(' ');
 /** Affichage en liste : « DUPONT Marie » ; un organisme (association…) garde son nom tel quel. */
-export const nomAffiche = x => x.organisme || !x.prenom ? (x.nom || '') : `${String(x.nom || '').toLocaleUpperCase('fr')} ${x.prenom}`;
+export const nomAffiche = x => {
+    if (x.organisme || !x.prenom) return x.nom || '';
+    if (!x.nom) return x.prenom; // seul le prénom est connu pour l'instant : fiche à compléter
+    return `${String(x.nom).toLocaleUpperCase('fr')} ${x.prenom}`;
+};
 /** Tri par patronyme puis prénom (sans tenir compte des accents ni des majuscules). */
 export function comparerPatronyme(a, b) {
   return cleNom(a.nom).localeCompare(cleNom(b.nom), 'fr') || cleNom(a.prenom).localeCompare(cleNom(b.prenom), 'fr');
