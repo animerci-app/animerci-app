@@ -44,6 +44,15 @@ export function besoins(c) {
     add('seniors', 'all');
     const an = c.anLS || c.auj.slice(0, 4); add('lienSocial', `an-${an}`, [['date', '>=', `${an}-01-01`], ['date', '<=', `${an}-12-31`]]);
   };
+  // Résidence (nouveau lot, v1.25.0, cahier §11, §22, §23) : l'administratrice et l'équipe si l'accès « Résidence » est coché.
+  // Personnel et remplacements : toute la liste (petit volume). Les autres sous-écrans : seulement l'année affichée, et seulement l'onglet ouvert (ou tous, pour les chiffres de l'année).
+  const residence = () => {
+    if (c.view !== 'residence' || !peut('residence')) return;
+    add('residencePersonnel', 'all'); add('seniors', 'all');
+    const an = c.anRes || c.auj.slice(0, 4), periode = (col) => add(col, `an-${an}`, [['date', '>=', `${an}-01-01`], ['date', '<=', `${an}-12-31`]]);
+    const O = { familles: 'residenceFamilles', residents: 'residenceResidents', journal: 'residenceJournal', remplacements: 'residenceRemplacements', interventions: 'residenceInterventions' };
+    if (c.ongletRes === 'stats') Object.values(O).forEach(periode); else if (O[c.ongletRes]) periode(O[c.ongletRes]);
+  };
   // Budgets et régie (lot D) : l'administratrice et l'équipe (si l'accès est coché) lisent les dépenses et opérations de l'année affichée (une par écran).
   const budgets = () => {
     if (c.budgetsActif === false || !peut('budgets')) return;
@@ -56,9 +65,9 @@ export function besoins(c) {
     add('seniorsLite', 'all');
     if (c.inscrActId) add('inscriptions', c.inscrActId, ['activiteId', '==', c.inscrActId]);
   };
-  if (c.role === 'benevole') { add('activites', 'all'); materiel(); portage(); budgets(); inscrire(); return B; }
+  if (c.role === 'benevole') { add('activites', 'all'); materiel(); portage(); budgets(); residence(); inscrire(); return B; }
   if (c.role === 'intervenant') {
-    add('activites', 'all'); materiel(); portage(); budgets();
+    add('activites', 'all'); materiel(); portage(); budgets(); residence();
     for (const id of c.mesActivites || []) { add('inscriptions', id, ['activiteId', '==', id]); add('seances', id, ['activiteId', '==', id]); }
     return B;
   }
@@ -80,6 +89,8 @@ export function besoins(c) {
     if (c.horizonPeremption) { add('materiel', 'bas', ['bas', '==', true]); add('materiel', 'manquant', ['manquant', '==', true]); add('materiel', 'peremp-' + c.horizonPeremption, [['echeance', '>', '0'], ['echeance', '<=', c.horizonPeremption]]); add('emprunts', 'ouverts', ['rendu', '==', false]); }
     // Alerte « portage » : reprises prévues dépassées (bénéficiaires interrompus) et suites à donner au prestataire : deux petites listes
     if (c.portageActif !== false) { add('portage', 'interrompus', ['etat', '==', 'interrompu']); add('portageEchanges', 'suites', ['suiteAFaire', '==', true]); add('portageJournal', 'suites', ['suiteAFaire', '==', true]); }
+    // Alerte « Résidence » : entrées du journal de transmissions encore « à traiter » ou « en cours », toutes années confondues (petite liste)
+    add('residenceJournal', 'ouverts', ['statut', 'in', ['a-traiter', 'en-cours']]);
     for (const a of c.activites || []) if (a.type === 'sortie' && a.date && a.date >= c.auj && a.date <= c.horizonSorties) { add('inscriptions', a.id, ['activiteId', '==', a.id]); add('fiches', a.id, ['activiteId', '==', a.id]); }
   }
   if (v === 'seniors' || v === 'bilans' || v === 'activite') add('seniors', 'all');
@@ -100,7 +111,7 @@ export function besoins(c) {
   if (v === 'questionnaires') { add('questionnaires', 'all'); if (c.questActId) add('reponsesQuestionnaire', 'q-' + c.questActId, ['questionnaireId', '==', c.questActId]); }
   // Bibliothèque des voyages et sorties (lot J) : toutes les sorties, et l'Annuaire pour choisir prestataire et transporteur.
   if (v === 'voyages') { add('voyages', 'all'); add('contacts', 'all'); }
-  materiel(); portage(); budgets(); lienSocial();
+  materiel(); portage(); budgets(); lienSocial(); residence();
   // Partenaires : l'annuaire, les conventions et les échanges de l'année affichée (+ ceux d'un partenaire si sa fiche est ouverte)
   if (v === 'partenaires') {
     const an = c.anPart || c.auj.slice(0, 4);

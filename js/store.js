@@ -34,7 +34,7 @@ function backendDemo() {
     if (!data) data = donneesDemo();
     charger_users();
   };
-  const charger_users = () => { data.corbeille = data.corbeille || []; data.journal = data.journal || []; data.parametres = data.parametres || []; data.contacts = data.contacts || []; data.echanges = data.echanges || []; data.conventions = data.conventions || []; data.materiel = data.materiel || []; data.emprunts = data.emprunts || []; data.mouvements = data.mouvements || []; data.portage = data.portage || []; data.portageEchanges = data.portageEchanges || []; data.portageJournal = data.portageJournal || []; data.lienSocial = data.lienSocial || []; data.accueils = data.accueils || []; data.seniorsLite = data.seniorsLite || []; data.depenses = data.depenses || []; data.regie = data.regie || []; data.questionnaires = data.questionnaires || []; data.reponsesQuestionnaire = data.reponsesQuestionnaire || []; data.voyages = data.voyages || [];
+  const charger_users = () => { data.corbeille = data.corbeille || []; data.journal = data.journal || []; data.parametres = data.parametres || []; data.contacts = data.contacts || []; data.echanges = data.echanges || []; data.conventions = data.conventions || []; data.materiel = data.materiel || []; data.emprunts = data.emprunts || []; data.mouvements = data.mouvements || []; data.portage = data.portage || []; data.portageEchanges = data.portageEchanges || []; data.portageJournal = data.portageJournal || []; data.lienSocial = data.lienSocial || []; data.accueils = data.accueils || []; data.seniorsLite = data.seniorsLite || []; data.depenses = data.depenses || []; data.regie = data.regie || []; data.questionnaires = data.questionnaires || []; data.reponsesQuestionnaire = data.reponsesQuestionnaire || []; data.voyages = data.voyages || []; data.residencePersonnel = data.residencePersonnel || []; data.residenceFamilles = data.residenceFamilles || []; data.residenceResidents = data.residenceResidents || []; data.residenceJournal = data.residenceJournal || []; data.residenceRemplacements = data.residenceRemplacements || []; data.residenceInterventions = data.residenceInterventions || [];
     if (!data.users || !data.users.length) data.users = Object.values(comptes).map(c => ({ id: c.uid, email: c.email, nom: c.nom, role: c.role, activites: c.activites, partenaireId: c.partenaireId || '', partenaireNom: c.partenaireNom || '', acces: c.acces || {}, accesFin: 0, accesJusqu: '' })); };
   const sauver = () => { try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) { /* stockage indisponible : on garde en mémoire */ } };
   const notifier = col => (ecoute[col] || new Set()).forEach(f => f());
@@ -50,7 +50,13 @@ function backendDemo() {
     nom: 'demo',
     async init() { charger(); },
     onAuth(cb) { authCb = cb; cb(user); },
-    async signInDemo(role) { user = comptes[role]; authCb(user); },
+    // Les boutons de démonstration utilisent des comptes fixes, mais reprennent les accès provisoires (cases cochées dans Équipe, dont « Résidence ») déjà enregistrés sur ce compte dans ce navigateur :
+    // ainsi une délégation d'accès cochée par l'administratrice en démonstration a un effet réel, le temps d'essayer l'outil.
+    async signInDemo(role) {
+      const base = comptes[role], enregistre = (data.users || []).find(u => u.id === base.uid);
+      user = enregistre ? { ...base, acces: enregistre.acces || base.acces || {}, accesFin: Number(enregistre.accesFin) || 0, accesJusqu: enregistre.accesJusqu || '' } : base;
+      authCb(user);
+    },
     async signIn() { throw new Error('Le mode démonstration n\'a pas de compte : utilisez les boutons de démonstration.'); },
     async signOut() { user = null; authCb(null); },
     async lire(col, filtre) { return JSON.parse(JSON.stringify((data[col] || []).filter(r => conds(filtre).every(c => passe(r, c))))); },
@@ -77,7 +83,7 @@ function backendDemo() {
     async creerCompte(email) { return 'demo-' + uid(); },
     async changerMdp() { /* démonstration : pas de mot de passe */ },
     async resetMdp() { /* démonstration : aucun e-mail envoyé */ },
-    async reset() { data = donneesDemo(); charger_users(); sauver(); COLS.concat(['users', 'corbeille', 'journal', 'parametres', 'contacts', 'echanges', 'conventions', 'materiel', 'emprunts', 'mouvements', 'portage', 'portageEchanges', 'portageJournal', 'lienSocial', 'accueils', 'seniorsLite', 'depenses', 'regie', 'questionnaires', 'reponsesQuestionnaire', 'voyages']).forEach(notifier); }
+    async reset() { data = donneesDemo(); charger_users(); sauver(); COLS.concat(['users', 'corbeille', 'journal', 'parametres', 'contacts', 'echanges', 'conventions', 'materiel', 'emprunts', 'mouvements', 'portage', 'portageEchanges', 'portageJournal', 'lienSocial', 'accueils', 'seniorsLite', 'depenses', 'regie', 'questionnaires', 'reponsesQuestionnaire', 'voyages', 'residencePersonnel', 'residenceFamilles', 'residenceResidents', 'residenceJournal', 'residenceRemplacements', 'residenceInterventions']).forEach(notifier); }
   };
 }
 

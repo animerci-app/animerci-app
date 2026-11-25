@@ -670,7 +670,7 @@ t('lot E : accès provisoires (cases, date de fin, intervenants sans saisie des 
   assert.equal(L.accesActif({ role: 'admin' }, 'portage', '2026-11-23'), true);
   assert.equal(L.accesActif({ role: 'partenaire', acces: { materiel: true } }, 'materiel', '2026-11-23'), false);
   assert.equal(L.accesActif(null, 'materiel', '2026-11-23'), false);
-  assert.deepEqual(L.champsAcces({ materiel: true }, '2026-12-31'), { acces: { materiel: true, portage: false, budgets: false, inscriptions: false }, accesJusqu: '2026-12-31', accesFin: 20261231 });
+  assert.deepEqual(L.champsAcces({ materiel: true }, '2026-12-31'), { acces: { materiel: true, portage: false, budgets: false, inscriptions: false, residence: false }, accesJusqu: '2026-12-31', accesFin: 20261231 });
   assert.equal(L.champsAcces({}, 'n\'importe quoi').accesFin, 0);
   assert.deepEqual(L.resumeAcces(b, '2026-11-23'), ['Accès : Matériel, Saisie des inscriptions (jusqu\'au 31/12/2026)']);
 });
@@ -984,4 +984,93 @@ t('lot B second temps : lien social — tableaux d\'export reprennent les mêmes
   assert.equal(T.length, 2);
   assert.ok(T[0].rows[0].includes('Mme Dupont'));
   assert.deepEqual(T[1].rows[0], ['Nombre de contacts', 1]);
+});
+
+/* ---------- Résidence (nouveau lot, v1.25.0) : §11, §22, §23 ---------- */
+t('Résidence : accès délégable « residence » ajouté à MODULES_ACCES, même mécanisme que Matériel/Portage/Budgets', () => {
+  assert.equal(L.MODULES_ACCES.residence, 'Résidence');
+  assert.equal(L.accesActif({ role: 'admin' }, 'residence', '2026-11-25'), true);
+  assert.equal(L.accesActif({ role: 'intervenant', acces: { residence: true }, accesFin: 0 }, 'residence', '2026-11-25'), true);
+  assert.equal(L.accesActif({ role: 'intervenant', acces: { residence: false }, accesFin: 0 }, 'residence', '2026-11-25'), false);
+  assert.equal(L.accesActif({ role: 'benevole', acces: { residence: true }, accesFin: 20260101 }, 'residence', '2026-11-25'), false, 'accès délégué expiré');
+  assert.equal(L.accesActif({ role: 'partenaire', acces: { residence: true } }, 'residence', '2026-11-25'), false, 'un partenaire n\'a jamais accès à la Résidence');
+});
+t('Résidence §11.1 : validation « Personnel et remplacements » (pas un dossier RH : agent, date, motif réglable)', () => {
+  const motifs = ['Congés', 'Formation'];
+  assert.equal(L.erreurPersonnelResidence({ agentNom: '', dateDebut: '2026-01-01', motif: 'Congés' }, motifs), 'Indiquez le nom de l\'agent concerné (texte simple, ou lien vers l\'Annuaire).');
+  assert.equal(L.erreurPersonnelResidence({ agentNom: 'Mme Untel', dateDebut: '', motif: 'Congés' }, motifs), 'Indiquez la date de début de l\'absence ou de l\'indisponibilité.');
+  assert.equal(L.erreurPersonnelResidence({ agentNom: 'Mme Untel', dateDebut: '2026-01-01', motif: 'Inconnu' }, motifs), 'Choisissez le motif d\'organisation (liste réglable dans Paramètres).');
+  assert.equal(L.erreurPersonnelResidence({ agentNom: 'Mme Untel', dateDebut: '2026-01-01', motif: 'Congés' }, motifs), '');
+});
+t('Résidence §11.2 : validation « Relations avec les familles » (nom de la famille obligatoire, résident·e facultatif)', () => {
+  assert.equal(L.erreurContactFamilleResidence({ familleNom: '', date: '2026-01-01', type: 'appel' }), 'Indiquez le nom de la famille ou du proche.');
+  assert.equal(L.erreurContactFamilleResidence({ familleNom: 'Famille Untel', date: '', type: 'appel' }), 'Indiquez la date.');
+  assert.equal(L.erreurContactFamilleResidence({ familleNom: 'Famille Untel', date: '2026-01-01', type: 'inconnu' }), 'Choisissez le type de contact.');
+  assert.equal(L.erreurContactFamilleResidence({ familleNom: 'Famille Untel', date: '2026-01-01', type: 'appel' }), '', 'valide même sans résidentId : le lien est facultatif');
+});
+t('Résidence §11.3 : validation « Relations avec les résidents » (résident·e obligatoire)', () => {
+  assert.equal(L.erreurContactResidentResidence({ residentId: '', date: '2026-01-01', type: 'demande' }), 'Choisissez le ou la résident·e concerné·e.');
+  assert.equal(L.erreurContactResidentResidence({ residentId: 's1', date: '', type: 'demande' }), 'Indiquez la date.');
+  assert.equal(L.erreurContactResidentResidence({ residentId: 's1', date: '2026-01-01', type: 'inconnu' }), 'Choisissez le type de contact.');
+  assert.equal(L.erreurContactResidentResidence({ residentId: 's1', date: '2026-01-01', type: 'reclamation' }), '');
+});
+t('Résidence §11.4 : validation du journal de transmissions et alerte « à traiter / en cours » après un délai réglable', () => {
+  const natures = ['Appel reçu', 'Visite'];
+  assert.equal(L.erreurJournalResidence({ date: '', nature: 'Appel reçu', statut: 'a-traiter' }, natures), 'Indiquez la date.');
+  assert.equal(L.erreurJournalResidence({ date: '2026-01-01', nature: 'Inconnue', statut: 'a-traiter' }, natures), 'Choisissez la nature (liste réglable dans Paramètres).');
+  assert.equal(L.erreurJournalResidence({ date: '2026-01-01', nature: 'Appel reçu', statut: 'inconnu' }, natures), 'Choisissez le statut.');
+  assert.equal(L.erreurJournalResidence({ date: '2026-01-01', nature: 'Appel reçu', statut: 'cloture' }, natures), '');
+  const journal = [
+    { id: '1', date: '2026-11-20', statut: 'a-traiter' }, // il y a 5 jours : en retard (seuil 24h = 1 jour)
+    { id: '2', date: '2026-11-25', statut: 'en-cours' }, // aujourd'hui : pas encore en retard
+    { id: '3', date: '2026-11-22', statut: 'cloture' } // clôturé : jamais compté
+  ];
+  const A = L.alertesJournalResidence(journal, '2026-11-25', 24);
+  assert.equal(A.length, 1); assert.ok(A[0].texte.includes('1 entrée')); assert.equal(A[0].vue, 'residence'); assert.equal(A[0].tab, 'journal');
+  assert.deepEqual(L.alertesJournalResidence([], '2026-11-25', 24), []);
+});
+t('Résidence §22 : validation des temps de remplacement (disponibilité / intervention effective)', () => {
+  assert.equal(L.erreurRemplacementResidence({ date: '', type: 'accueil', nature: 'disponibilite', duree: 60 }), 'Indiquez la date.');
+  assert.equal(L.erreurRemplacementResidence({ date: '2026-01-01', type: 'inconnu', nature: 'disponibilite', duree: 60 }), 'Choisissez le type de remplacement.');
+  assert.equal(L.erreurRemplacementResidence({ date: '2026-01-01', type: 'accueil', nature: 'inconnue', duree: 60 }), 'Précisez s\'il s\'agit d\'un temps de disponibilité ou d\'une intervention effective.');
+  assert.equal(L.erreurRemplacementResidence({ date: '2026-01-01', type: 'accueil', nature: 'disponibilite', duree: 0 }), 'Indiquez la durée (en minutes).');
+  assert.equal(L.erreurRemplacementResidence({ date: '2026-01-01', type: 'accueil', nature: 'intervention', duree: 45 }), '');
+});
+t('Résidence §23 : validation des interventions exceptionnelles (motif réglable, intervention décrite)', () => {
+  const motifs = ['Panne ou incident technique', 'Autre intervention exceptionnelle'];
+  assert.equal(L.erreurInterventionResidence({ date: '', motif: motifs[0], intervention: 'x' }, motifs), 'Indiquez la date.');
+  assert.equal(L.erreurInterventionResidence({ date: '2026-01-01', motif: 'Inconnu', intervention: 'x' }, motifs), 'Choisissez le motif (liste réglable dans Paramètres).');
+  assert.equal(L.erreurInterventionResidence({ date: '2026-01-01', motif: motifs[0], intervention: '' }, motifs), 'Décrivez brièvement l\'intervention réalisée.');
+  assert.equal(L.erreurInterventionResidence({ date: '2026-01-01', motif: motifs[0], intervention: 'Dépannage du lecteur de badge' }, motifs), '');
+});
+t('Résidence §11.5 : statistiques annuelles (contacts familles/résidents, journal par statut, temps de remplacement, interventions)', () => {
+  const data = {
+    familles: [{ id: 'f1', date: '2026-02-01' }, { id: 'f2', date: '2025-01-01' }],
+    residents: [{ id: 'r1', date: '2026-03-01' }, { id: 'r2', date: '2026-04-01' }],
+    journal: [{ id: 'j1', date: '2026-01-01', statut: 'a-traiter' }, { id: 'j2', date: '2026-01-02', statut: 'cloture' }, { id: 'j3', date: '2026-01-03', statut: 'cloture' }],
+    remplacements: [{ id: 'p1', date: '2026-01-01', nature: 'disponibilite', duree: 120 }, { id: 'p2', date: '2026-01-02', nature: 'intervention', duree: 30 }],
+    interventions: [{ id: 'i1', date: '2026-05-01', tempsConsacre: 45 }]
+  };
+  const s = L.statsResidence(data, 2026);
+  assert.equal(s.contactsFamilles, 1, 'le contact de 2025 est exclu');
+  assert.equal(s.contactsResidents, 2);
+  assert.equal(s.parStatutJournal['a-traiter'], 1); assert.equal(s.parStatutJournal.cloture, 2);
+  assert.equal(s.tempsDisponibiliteMinutes, 120); assert.equal(s.tempsInterventionMinutes, 30); assert.equal(s.tempsRemplacementMinutes, 150);
+  assert.equal(s.interventionsExceptionnelles, 1); assert.equal(s.tempsInterventionsExceptionnellesMinutes, 45);
+  const T = L.tableauxResidence(data, 2026);
+  assert.equal(T.length, 1);
+  assert.ok(T[0].rows.some(r => r[0] === 'Contacts avec des familles' && r[1] === 1));
+  assert.ok(T[0].rows.some(r => r[0] === 'Temps total de remplacement (minutes)' && r[1] === 150));
+});
+t('Résidence : chargement à la demande (besoins()) — personnel toujours chargé, le reste par année et par onglet ouvert, aucun accès sans la case cochée', async () => {
+  const { besoins } = await import('../js/donnees.js');
+  const ctx = { auj: '2026-11-25', view: 'residence', ongletRes: 'familles', anRes: 2026, activites: [], mesActivites: [], acces: { residence: true } };
+  const cles = c => besoins(c).map(b => `${b.col}|${b.key}`);
+  for (const role of ['admin', 'intervenant', 'benevole']) assert.ok(cles({ ...ctx, role }).includes('residencePersonnel|all'), role);
+  assert.ok(cles({ ...ctx, role: 'admin' }).includes('residenceFamilles|an-2026'));
+  assert.ok(!cles({ ...ctx, role: 'admin' }).some(k => k.startsWith('residenceJournal|an')), 'seul l\'onglet ouvert (familles) est chargé, pas le journal');
+  assert.ok(cles({ ...ctx, role: 'admin', ongletRes: 'stats' }).filter(k => k.startsWith('residence') && k !== 'residencePersonnel|all').length === 5, 'onglet « stats » : les cinq sous-collections de l\'année');
+  assert.ok(!cles({ ...ctx, role: 'benevole', acces: { residence: false } }).some(k => k.startsWith('residence')), 'sans la case « Résidence » cochée : aucun accès');
+  assert.ok(!cles({ ...ctx, role: 'partenaire', uid: 'u' }).some(k => k.startsWith('residence')), 'le partenaire n\'a jamais accès à la Résidence');
+  assert.ok(cles({ ...ctx, role: 'admin', view: 'home' }).includes('residenceJournal|ouverts'), 'accueil : petite liste des entrées « à traiter » ou « en cours »');
 });

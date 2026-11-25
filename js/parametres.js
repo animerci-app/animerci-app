@@ -59,8 +59,15 @@ export const DEFAUTS = {
     unites: ['unité(s)', 'kg', 'g', 'L', 'cl', 'boîte(s)', 'paquet(s)', 'sachet(s)', 'bouteille(s)', 'rouleau(x)', 'lot(s)'],
     alertePeremptionJours: 30
   },
-  // Lieux de vie : le nom de la résidence (pour les résident·es) et la commune proposée à l'inscription d'un·e adhérent·e
-  residence: { nom: '', adresse: '' },
+  // Lieux de vie : le nom de la résidence (pour les résident·es) et la commune proposée à l'inscription d'un·e adhérent·e.
+  // Menu « Résidence » (nouveau lot, v1.25.0, cahier §11, §22, §23) : listes réglables, aucun motif de santé. Accès délégable : voir MODULES_ACCES (logic.js) et Équipe.
+  residence: {
+    nom: '', adresse: '',
+    motifsAbsencePersonnel: ['Congés', 'Formation', 'Réunion extérieure', 'Absence imprévue (motif non précisé)', 'Autre motif d\'organisation'],
+    naturesJournal: ['Appel reçu', 'Appel émis', 'Visite', 'Incident matériel ou technique', 'Information à transmettre à l\'équipe suivante', 'Autre'],
+    motifsIntervention: ['Déplacement pour apporter un repas suite à un livreur n\'ayant pas trouvé le bénéficiaire', 'Panne ou incident technique', 'Urgence organisationnelle', 'Autre intervention exceptionnelle'],
+    alerteJournalHeures: 24
+  },
   commune: { defaut: '' },
   adhesion: { montantDefaut: 40, relanceMois: 12, modes: ['Espèces', 'Chèque', 'Virement', 'Autre'] },
   verification: { mois: 12 },
@@ -69,7 +76,7 @@ export const DEFAUTS = {
   modules: { taches: true, bilans: true, portage: true, accueils: true, budgets: true, questionnaires: true, voyages: true }
 };
 // Bornes acceptées pour les nombres (une valeur hors bornes est ignorée au profit de la valeur par défaut)
-const BORNES = { 'accueils.objectifHeures': [1, 1000], 'accueils.montantBourse': [0, 10000], 'accueils.seuilRetardHeures': [1, 200], 'accueils.alerteJours': [1, 365], 'adhesion.montantDefaut': [0, 1000], 'adhesion.relanceMois': [1, 12], 'verification.mois': [1, 36], 'securite.joursCorbeille': [1, 365], 'securite.joursJournal': [30, 1095], 'securite.rappelSauvegardeJours': [1, 365], 'securite.motDePasseMin': [8, 64], 'securite.horizonEmargementJours': [1, 90], 'partenaires.alerteJours': [1, 365], 'materiel.alertePeremptionJours': [1, 365], 'budgets.seuilAlertePourcent': [1, 100], 'regie.alerteJours': [1, 365] };
+const BORNES = { 'accueils.objectifHeures': [1, 1000], 'accueils.montantBourse': [0, 10000], 'accueils.seuilRetardHeures': [1, 200], 'accueils.alerteJours': [1, 365], 'adhesion.montantDefaut': [0, 1000], 'adhesion.relanceMois': [1, 12], 'verification.mois': [1, 36], 'securite.joursCorbeille': [1, 365], 'securite.joursJournal': [30, 1095], 'securite.rappelSauvegardeJours': [1, 365], 'securite.motDePasseMin': [8, 64], 'securite.horizonEmargementJours': [1, 90], 'partenaires.alerteJours': [1, 365], 'materiel.alertePeremptionJours': [1, 365], 'budgets.seuilAlertePourcent': [1, 100], 'regie.alerteJours': [1, 365], 'residence.alerteJournalHeures': [1, 240] };
 
 const lire = (obj, chemin) => chemin.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
 export function P(chemin) {
@@ -118,6 +125,13 @@ export function parametres() {
     ${liste('p-pgj', 'portage.journalTypes', 'Journal de suivi : types d\'événements', 'Une par ligne (ex. appel du bénéficiaire, appel d\'un proche, modification de livraison, problème rencontré, demande, action réalisée).')}</div>
   <div class="card" style="margin-bottom:14px"><h2 style="margin-top:0">Lien social</h2>
     ${liste('p-lsm', 'liensocial.motifs', 'Motifs généraux des contacts', '<b>Une par ligne.</b> <b>✔ À mettre</b> : des motifs d\'organisation (« prise de nouvelles », « organisation d\'une activité », « demande d\'information »). <b>✘ À ne pas mettre</b> : tout motif de santé. Écran réservé à l\'administratrice.')}</div>
+  <div class="card" style="margin-bottom:14px"><h2 style="margin-top:0">Résidence</h2>
+    <p class="sub" style="margin:0 0 8px">Personnel et remplacements, relations avec les familles et les résidents, journal de transmissions, temps de remplacement, interventions exceptionnelles (cahier §11, §22, §23). Accès : l'administratrice, et l'équipe si la case « Résidence » est cochée dans sa fiche (Équipe), le temps d'une délégation.</p>
+    ${liste('p-rpm', 'residence.motifsAbsencePersonnel', 'Motifs d\'absence ou d\'indisponibilité du personnel', '<b>Une par ligne.</b> <b>✔ À mettre</b> : des motifs d\'organisation (« congés », « formation », « réunion extérieure »). <b>✘ À ne pas mettre</b> : tout motif de santé. Ce module n\'est pas un dossier RH : aucune donnée contractuelle, aucun salaire.')}
+    ${liste('p-rjn', 'residence.naturesJournal', 'Journal de transmissions : natures', 'Une par ligne (ex. appel reçu, appel émis, visite, incident matériel, information à transmettre).')}
+    ${liste('p-rim', 'residence.motifsIntervention', 'Motifs des interventions exceptionnelles', 'Une par ligne (ex. déplacement pour apporter un repas suite à un livreur n\'ayant pas trouvé le bénéficiaire).')}
+    <div class="two">${num('p-rah', 'residence.alerteJournalHeures', 'Alerte « à traiter » dans le journal depuis plus de (heures)')}</div>
+    <p class="sub" style="margin:0">✔ <b>À écrire</b> : des éléments d'organisation (qui, quoi, quand, où, comment s'organiser). ✘ <b>À ne pas écrire</b> : toute information de santé ou de situation personnelle sensible, dans aucun champ, jamais.</p></div>
   <div class="card" style="margin-bottom:14px"><h2 style="margin-top:0">Accueils (jeunes adultes, services civiques, stagiaires)</h2>
     ${liste('p-aed', 'accueils.etatsDossier', 'États du dossier de la bourse', 'Une par ligne, dans l\'ordre de la démarche (ex. dossier à constituer, déposé, validé, bourse versée). Suivi administratif seulement.')}
     <div class="two">${num('p-aoh', 'accueils.objectifHeures', 'Objectif d\'heures proposé (bourse)')}
@@ -173,11 +187,12 @@ export const actions = {
     const cats = lignes('#p-cats'), bud = lignes('#p-bud'), mob = lignes('#p-mob'), ann = lignes('#p-ann'), psv = lignes('#p-psv'), pty = lignes('#p-pty');
     const aed = lignes('#p-aed'), mdr = lignes('#p-mdr'), mca = lignes('#p-mca'), mcr = lignes('#p-mcr'), mem = lignes('#p-mem'), msa = lignes('#p-msa'), mun = lignes('#p-mun'), pgm = lignes('#p-pgm'), pgj = lignes('#p-pgj'), lsm = lignes('#p-lsm');
     const bdi = lignes('#p-bdi'), rty = lignes('#p-rty'), rmo = lignes('#p-rmo'), qth = lignes('#p-qth');
-    if (!cats.length || !bud.length || !mob.length || !ann.length || !psv.length || !pty.length || !mca.length || !mcr.length || !mem.length || !msa.length || !mun.length || !mdr.length || !pgm.length || !pgj.length || !lsm.length || !aed.length || !bdi.length || !rty.length || !rmo.length || !qth.length) return toast('Chaque liste doit contenir au moins un choix.');
+    const rpm = lignes('#p-rpm'), rjn = lignes('#p-rjn'), rim = lignes('#p-rim');
+    if (!cats.length || !bud.length || !mob.length || !ann.length || !psv.length || !pty.length || !mca.length || !mcr.length || !mem.length || !msa.length || !mun.length || !mdr.length || !pgm.length || !pgj.length || !lsm.length || !aed.length || !bdi.length || !rty.length || !rmo.length || !qth.length || !rpm.length || !rjn.length || !rim.length) return toast('Chaque liste doit contenir au moins un choix.');
     await sauver('parametres', {
       id: 'general', nomOutil: $('#p-nom').value.trim() || DEFAUTS.nomOutil, nomService: $('#p-svc').value.trim() || DEFAUTS.nomService,
       affiche: { lieu: $('#p-aff-l').value.trim(), pied: $('#p-aff-p').value.trim() || DEFAUTS.affiche.pied },
-      residence: { nom: $('#p-res').value.trim(), adresse: $('#p-resadr').value.trim() }, commune: { defaut: $('#p-com').value.trim() },
+      residence: { nom: $('#p-res').value.trim(), adresse: $('#p-resadr').value.trim(), motifsAbsencePersonnel: rpm, naturesJournal: rjn, motifsIntervention: rim, alerteJournalHeures: val('#p-rah', 'residence.alerteJournalHeures') }, commune: { defaut: $('#p-com').value.trim() },
       listes: { categories: cats, budgets: bud, mobilites: mob },
       annuaire: { categories: ann, rubriques: Object.fromEntries(Object.keys(RUBR_LABELS).map(k => [k, ann.includes($('#p-r-' + k).value) ? $('#p-r-' + k).value : ann[0]])) },
       adhesion: { montantDefaut: val('#p-cot', 'adhesion.montantDefaut'), relanceMois: val('#p-rel', 'adhesion.relanceMois'), modes: mdr },

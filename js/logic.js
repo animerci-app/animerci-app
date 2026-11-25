@@ -1009,7 +1009,7 @@ export function alertesPortage({ portages = [], echanges = [], auj }) {
    Lot E (v1.20.0) : accès provisoires de l'équipe, vue restreinte des personnes, accueils (jeunes adultes, services civiques, stagiaires), bénévoles
    Tout est écrit pour l'ORGANISATION du service : aucune donnée de santé.
    ============================================================================================================ */
-export const MODULES_ACCES = { materiel: 'Matériel', portage: 'Portage de repas', budgets: 'Budgets et régie', inscriptions: 'Saisie des inscriptions' };
+export const MODULES_ACCES = { materiel: 'Matériel', portage: 'Portage de repas', budgets: 'Budgets et régie', inscriptions: 'Saisie des inscriptions', residence: 'Résidence' };
 /** « 2026-12-31 » → 20261231 (0 si la date est invalide). Sert à comparer sans fuseau et à écrire la règle Firestore. */
 export const dateEnNombre = iso => (/^\d{4}-\d{2}-\d{2}$/.test(iso || '') ? Number(iso.replace(/-/g, '')) : 0);
 /**
@@ -1395,5 +1395,114 @@ export function tableauxLienSocial(contacts, an, nomSenior) {
       rows: rows.map(c => [fmtDate(c.date), c.heure || '', nomSenior(c.seniorId), TYPES_CONTACT_LIEN_SOCIAL[c.type] || c.type || '', c.motif || '', c.duree || '', c.action || '', c.suite || '', STATUTS_CONTACT_LIEN_SOCIAL[c.statut] || c.statut || '', c.par || '']) },
     { nom: 'Chiffres de l\'année', titre: `Lien social : chiffres ${an}`, cols: ['Indicateur', 'Valeur'],
       rows: [['Nombre de contacts', s.contacts], ['Personnes distinctes', s.personnesDistinctes], ['Interventions', s.interventions], ['Appels', s.appels], ['Visites', s.visites], ['Rendez-vous', s.rdv], ['Temps consacré (minutes)', s.tempsConsacre]] }
+  ];
+}
+
+/* ============================================================================================================
+   Résidence (nouveau lot, v1.25.0) : personnel et remplacements (§11.1), relations avec les familles (§11.2),
+   relations avec les résidents (§11.3), journal de transmissions (§11.4), temps de remplacement (§22), interventions
+   exceptionnelles (§23). Tout est écrit pour l'ORGANISATION du service (qui, quoi, quand, où,
+   comment s'organiser) : AUCUNE donnée de santé ou assimilée, nulle part, jamais (le DPO a validé la démarche sur cette base).
+   Accès : l'administratrice a tout ; un membre de l'équipe (intervenant·e ou bénévole) seulement si la case
+   « Résidence » est cochée sur son profil (accès délégable, cf. MODULES_ACCES et accesActif ci-dessus), le temps
+   d'une urgence, sans jamais avoir à partager le compte de l'administratrice.
+   ============================================================================================================ */
+export const TYPES_CONTACT_FAMILLE_RESIDENCE = { appel: 'Appel', rdv: 'Rendez-vous', visite: 'Visite', demande: 'Demande' };
+export const TYPES_CONTACT_RESIDENT_RESIDENCE = { demande: 'Demande', reclamation: 'Réclamation', difficulte: 'Difficulté', 'vie-collective': 'Vie collective', 'demande-particuliere': 'Demande particulière' };
+export const STATUTS_JOURNAL_RESIDENCE = { 'a-traiter': 'À traiter', 'en-cours': 'En cours', 'en-attente': 'En attente', cloture: 'Clôturé' };
+export const TYPES_REMPLACEMENT_RESIDENCE = { responsable: 'Responsable', accueil: 'Accueil', 'ligne-telephonique': 'Ligne téléphonique transférée', 'disponibilite-bip': 'Disponibilité (« bip »)' };
+export const NATURES_REMPLACEMENT_RESIDENCE = { disponibilite: 'Temps de disponibilité', intervention: 'Intervention effective' };
+
+/* ---------- §11.1 : personnel et remplacements ---------- */
+// Surtout PAS un dossier RH : aucune donnée contractuelle, aucun salaire, aucun dossier administratif du personnel.
+// Uniquement de l'organisation : « Untel absent du ... au ..., remplacé par ... ».
+/** Message d'erreur (ou '') pour une entrée « Personnel et remplacements ». */
+export function erreurPersonnelResidence({ agentNom, dateDebut, motif }, motifs = []) {
+  if (!String(agentNom || '').trim()) return 'Indiquez le nom de l\'agent concerné (texte simple, ou lien vers l\'Annuaire).';
+  if (!DATE_ISO.test(dateDebut || '')) return 'Indiquez la date de début de l\'absence ou de l\'indisponibilité.';
+  if (!motifs.includes(motif)) return 'Choisissez le motif d\'organisation (liste réglable dans Paramètres).';
+  return '';
+}
+
+/* ---------- §11.2 : relations avec les familles ---------- */
+/** Message d'erreur (ou '') pour un contact avec la famille d'un·e résident·e. */
+export function erreurContactFamilleResidence({ familleNom, date, type }) {
+  if (!String(familleNom || '').trim()) return 'Indiquez le nom de la famille ou du proche.';
+  if (!DATE_ISO.test(date || '')) return 'Indiquez la date.';
+  if (!TYPES_CONTACT_FAMILLE_RESIDENCE[type]) return 'Choisissez le type de contact.';
+  return '';
+}
+
+/* ---------- §11.3 : relations avec les résidents ---------- */
+/** Message d'erreur (ou '') pour un contact avec un·e résident·e lui-même. */
+export function erreurContactResidentResidence({ residentId, date, type }) {
+  if (!residentId) return 'Choisissez le ou la résident·e concerné·e.';
+  if (!DATE_ISO.test(date || '')) return 'Indiquez la date.';
+  if (!TYPES_CONTACT_RESIDENT_RESIDENCE[type]) return 'Choisissez le type de contact.';
+  return '';
+}
+
+/* ---------- §11.4 : journal de transmissions ---------- */
+/** Message d'erreur (ou '') pour une entrée du journal de transmissions. */
+export function erreurJournalResidence({ date, nature, statut }, natures = []) {
+  if (!DATE_ISO.test(date || '')) return 'Indiquez la date.';
+  if (!natures.includes(nature)) return 'Choisissez la nature (liste réglable dans Paramètres).';
+  if (!STATUTS_JOURNAL_RESIDENCE[statut]) return 'Choisissez le statut.';
+  return '';
+}
+/** Alertes de l'accueil : entrées du journal de transmissions « à traiter » ou « en cours » depuis plus d'un délai réglable (en heures, converti en jours pleins). */
+export function alertesJournalResidence(journal = [], auj, delaiHeures = 24) {
+  const A = [], seuilJours = Math.max(1, Math.round((Number(delaiHeures) || 24) / 24)), seuil = plusJ(auj, -seuilJours);
+  const enRetard = journal.filter(j => (j.statut === 'a-traiter' || j.statut === 'en-cours') && j.date && j.date <= seuil);
+  if (enRetard.length) A.push({ niveau: 'warn', texte: `Résidence : ${enRetard.length} entrée${enRetard.length > 1 ? 's' : ''} du journal de transmissions « à traiter » ou « en cours » depuis plus de ${seuilJours} jour${seuilJours > 1 ? 's' : ''}`, vue: 'residence', tab: 'journal' });
+  return A;
+}
+
+/* ---------- §22 : temps de remplacement ---------- */
+/** Message d'erreur (ou '') pour une période de remplacement. */
+export function erreurRemplacementResidence({ date, type, nature, duree }) {
+  if (!DATE_ISO.test(date || '')) return 'Indiquez la date.';
+  if (!TYPES_REMPLACEMENT_RESIDENCE[type]) return 'Choisissez le type de remplacement.';
+  if (!NATURES_REMPLACEMENT_RESIDENCE[nature]) return 'Précisez s\'il s\'agit d\'un temps de disponibilité ou d\'une intervention effective.';
+  if (!(Number(duree) > 0)) return 'Indiquez la durée (en minutes).';
+  return '';
+}
+
+/* ---------- §23 : interventions exceptionnelles ---------- */
+/** Message d'erreur (ou '') pour une intervention exceptionnelle. */
+export function erreurInterventionResidence({ date, motif, intervention }, motifs = []) {
+  if (!DATE_ISO.test(date || '')) return 'Indiquez la date.';
+  if (!motifs.includes(motif)) return 'Choisissez le motif (liste réglable dans Paramètres).';
+  if (!String(intervention || '').trim()) return 'Décrivez brièvement l\'intervention réalisée.';
+  return '';
+}
+
+/* ---------- §11.5 et récapitulatif : statistiques annuelles ---------- */
+/** Chiffres de l'année pour l'ensemble du menu Résidence : contacts familles, contacts résidents, entrées du journal par statut, temps total de remplacement, interventions exceptionnelles. */
+export function statsResidence({ familles = [], residents = [], journal = [], remplacements = [], interventions = [] } = {}, an) {
+  const deLAnnee = arr => arr.filter(x => x.date && x.date.slice(0, 4) === String(an));
+  const f = deLAnnee(familles), r = deLAnnee(residents), j = deLAnnee(journal), rpl = deLAnnee(remplacements), itv = deLAnnee(interventions);
+  const parStatutJournal = Object.fromEntries(Object.keys(STATUTS_JOURNAL_RESIDENCE).map(k => [k, j.filter(x => x.statut === k).length]));
+  const tempsDisponibilite = rpl.filter(x => x.nature === 'disponibilite').reduce((s, x) => s + num(x.duree), 0);
+  const tempsIntervention = rpl.filter(x => x.nature === 'intervention').reduce((s, x) => s + num(x.duree), 0);
+  return {
+    contactsFamilles: f.length, contactsResidents: r.length, journal: j.length, parStatutJournal,
+    tempsRemplacementMinutes: tempsDisponibilite + tempsIntervention, tempsDisponibiliteMinutes: tempsDisponibilite, tempsInterventionMinutes: tempsIntervention,
+    interventionsExceptionnelles: itv.length, tempsInterventionsExceptionnellesMinutes: itv.reduce((s, x) => s + num(x.tempsConsacre), 0)
+  };
+}
+/** Tableaux d'export (Excel, PDF) des chiffres de l'année du menu Résidence. */
+export function tableauxResidence(data, an) {
+  const s = statsResidence(data, an);
+  return [
+    { nom: 'Chiffres de l\'année', titre: `Résidence : chiffres ${an}`, cols: ['Indicateur', 'Valeur'],
+      rows: [
+        ['Contacts avec des familles', s.contactsFamilles], ['Contacts avec des résidents', s.contactsResidents],
+        ['Journal — à traiter', s.parStatutJournal['a-traiter']], ['Journal — en cours', s.parStatutJournal['en-cours']],
+        ['Journal — en attente', s.parStatutJournal['en-attente']], ['Journal — clôturé', s.parStatutJournal.cloture],
+        ['Temps de disponibilité (minutes)', s.tempsDisponibiliteMinutes], ['Temps d\'intervention effective (minutes)', s.tempsInterventionMinutes],
+        ['Temps total de remplacement (minutes)', s.tempsRemplacementMinutes],
+        ['Interventions exceptionnelles', s.interventionsExceptionnelles], ['Temps consacré aux interventions exceptionnelles (minutes)', s.tempsInterventionsExceptionnellesMinutes]
+      ] }
   ];
 }
