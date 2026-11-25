@@ -120,7 +120,7 @@ function contactForm(id) {
   <div class="two"><div class="field"><label for="c1">Nom <small class="sub">(patronyme)</small></label><input id="c1" value="${esc(c.nom || '')}" autocomplete="off"></div>
   <div class="field" id="c7z"><label for="c7">Prénom</label><input id="c7" value="${esc(c.prenom || '')}" autocomplete="off"></div></div>
   <p class="sub" id="c1z">Vous pouvez n'indiquer que le nom ou que le prénom pour l'instant (par exemple si le nom de famille n'est pas encore connu), et compléter l'autre dès que possible.</p>
-    <label class="chk" style="margin:0 0 8px"><input type="checkbox" id="c8" ${c.organisme ? 'checked' : ''}> C'est un organisme (association, entreprise…) : pas de prénom</label>
+  <label class="chk" style="margin:0 0 8px"><input type="checkbox" id="c8" ${c.organisme ? 'checked' : ''}> C'est un organisme (association, entreprise…) : pas de prénom</label>
   <div class="field"><label for="c6">Métier, activité ou organisme <small class="sub">(précision ; obligatoire si une autre personne porte le même nom)</small></label><input id="c6" value="${esc(c.precision || '')}" placeholder="Fleuriste, musicien, association…" autocomplete="off"></div>
   <div class="field"><label for="c2">Catégorie</label><select id="c2">${toutes.map(k => `<option ${c.categorie === k ? 'selected' : ''}>${esc(k)}</option>`).join('')}</select></div>
   <div class="two"><div class="field"><label for="c3">Téléphone</label><input id="c3" type="tel" value="${esc(c.tel || '')}"></div>
@@ -144,8 +144,8 @@ function contactForm(id) {
   const maj = () => { $('#c7z').style.display = $('#c8').checked ? 'none' : ''; $('#c1z').style.display = $('#c8').checked ? 'none' : ''; $('#blocBen').style.display = $('#c2').value === P('annuaire.rubriques.activiteBenevole') ? '' : 'none'; }; $('#c8').onchange = maj; $('#c2').onchange = maj; maj();
   $('#saveC').onclick = async () => {
     const organisme = $('#c8').checked, nom = $('#c1').value.trim(), prenom = organisme ? '' : $('#c7').value.trim();
-        if (organisme && !nom) return toast('Le nom de l\'organisme est nécessaire.');
-        if (!organisme && !nom && !prenom) return toast('Le nom ou le prénom est nécessaire : complétez au moins l\'un des deux.');
+    if (organisme && !nom) return toast('Le nom de l\'organisme est nécessaire.');
+    if (!organisme && !nom && !prenom) return toast('Le nom ou le prénom est nécessaire : complétez au moins l\'un des deux.');
     const categorie = $('#c2').value, precision = $('#c6').value.trim(), cle = cleNom(nomComplet({ nom, prenom }));
     // homonymes : même nom complet dans la même catégorie → la précision est obligatoire et doit les distinguer
     const memes = (await store.lire('contacts', ['categorie', '==', categorie])).map(normContact).filter(x => x.id !== id && cleNom(nomComplet(x)) === cle);

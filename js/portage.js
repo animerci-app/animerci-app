@@ -243,12 +243,12 @@ function vueStats() {
   const an = anneePortage(), T = L.tableauxPortage(docsPortage(), an), s = L.statsPortage(docsPortage(), an);
   return `<div style="margin-bottom:10px">${selectAnnee('pg-an', an)}</div>
   <div class="card" style="margin-bottom:14px"><h2 style="margin-top:0">${esc(T[0].titre)}</h2>${tableau(T[0].cols, T[0].rows)}
-    <p class="sub" style="margin:8px 0 0">${an - 1 < L.ANNEE_REFERENCE_PORTAGE ? `Pas de comparaison : l'année ${an - 1} n'a pas été suivie dans l'outil. ` : ''}Un bénéficiaire « interrompu » reste bénéficiaire ; seul l'arrêt définitif le fait sortir. Les « nouveaux » sont ceux dont le service a commencé (ou recommencé après un arrêt) dans l'année ; les bénéficiaires d'avant ${L.ANNEE_REFERENCE_PORTAGE} ne sont pas comptés comme nouveaux.</p></div>
+    <p class="sub" style="margin:8px 0 0">${an - 1 < L.ANNEE_REFERENCE_PORTAGE ? `Pas de comparaison : l'année ${an - 1} n'a pas été suivie dans l'outil. ` : ''}Un bénéficiaire « interrompu » reste bénéficiaire ; seul l'arrêt définitif le fait sortir. Les « nouveaux » sont ceux dont le service a commencé (ou recommencé après un arrêt) dans l'année ; les bénéficiaires d'avant ${L.ANNEE_REFERENCE_PORTAGE} ne sont pas comptés comme nouveaux. Ces chiffres comptent les bénéficiaires actuellement en service ; le filtre « Portage de repas » de l'écran Personnes compte, lui, toutes les fiches cochées, y compris un service arrêté.</p></div>
   <div class="card" style="margin-bottom:14px"><h2 style="margin-top:0">${esc(T[1].titre)}</h2>${T[1].rows.length ? tableau(T[1].cols, T[1].rows) : '<div class="empty"><b>Aucune interruption ni sortie</b>Rien à signaler cette année.</div>'}</div>
   <div class="card" style="margin-bottom:14px"><h2 style="margin-top:0">${esc(T[2].titre)}</h2>${s.beneficiairesAnnee ? tableau(T[2].cols, T[2].rows) : '<div class="empty"><b>Aucun bénéficiaire cette année</b></div>'}</div>
   <div class="card"><h2 style="margin-top:0">${esc(T[3].titre)}</h2>${tableau(T[3].cols, T[3].rows)}<p class="sub" style="margin:8px 0 0">Livraisons par semaine (somme des jours de tous les bénéficiaires au 31 décembre) : <b>${s.livraisonsParSemaine}</b>.</p></div>`;
 }
-const enteteExport = an => [`Portage de repas : statistiques ${an} (AniMerci, ${P('nomService')}), édité le ${fr(aujourdhui())}.`, 'Aucune donnée de santé dans ce document. Un bénéficiaire interrompu temporairement reste compté ; seul l\'arrêt définitif le fait sortir.'];
+const enteteExport = an => [`Portage de repas : statistiques ${an} (AniMerci, ${P('nomService')}), édité le ${fr(aujourdhui())}.`, 'Aucune donnée de santé dans ce document. Un bénéficiaire interrompu temporairement reste compté ; seul l\'arrêt définitif le fait sortir. Ces chiffres comptent les bénéficiaires en service, à distinguer du filtre « Portage de repas » de l\'écran Personnes (toutes les fiches cochées).'];
 
 /* ---------- Actions ---------- */
 export const actions = {

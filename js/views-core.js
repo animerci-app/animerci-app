@@ -14,12 +14,31 @@ const CATS_TACHE = ['Événements', 'Communication', 'Régie', 'Bénévoles', 'A
 
 /* ============ ACCUEIL ============ */
 // Alertes calculées sur les données déjà chargées (aucune lecture en plus) : tâches en retard ou prioritaires, places en attente, appels à valider
+// Budgets et régie (depuis 1.28.0) : remontées ici seulement si l'année en cours est déjà en mémoire (ouverte une fois par l'administratrice dans Budgets ou Régie pendant la session) ;
+// sinon rien n'est lu en plus pour l'accueil (même principe que le Portage de repas, déjà remonté ainsi depuis 1.20.0).
 function alertesCard() {
-  const al = L.alertesAccueil({ activites: S.cache.activites, inscriptions: S.cache.inscriptions, seances: S.cache.seances, taches: S.cache.taches, auj: aujourdhui(), echanges: S.cache.echanges, conventions: S.cache.conventions, fiches: S.compteursFiches || null, portages: moduleActif('portage') ? S.cache.portage : [], echangesPortage: moduleActif('portage') ? S.cache.portageEchanges : [], journalPortage: moduleActif('portage') ? S.cache.portageJournal : [], joursConv: P('partenaires.alerteJours'), materiel: S.cache.materiel, emprunts: S.cache.emprunts.filter(e => !e.rendu), joursPeremption: P('materiel.alertePeremptionJours'), accueils: moduleActif('accueils') ? S.cache.accueils : [], benevoles: S.cache.contacts, categorieBenevole: P('annuaire.rubriques.activiteBenevole'), seuilHeures: P('accueils.seuilRetardHeures') });
+  const an = `an-${Number(aujourdhui().slice(0, 4))}`;
+  const budgetsPrets = moduleActif('budgets') && pret('depenses', an), regiePrete = moduleActif('budgets') && pret('regie', an);
+  const al = L.alertesAccueil({ activites: S.cache.activites, inscriptions: S.cache.inscriptions, seances: S.cache.seances, taches: S.cache.taches, auj: aujourdhui(), echanges: S.cache.echanges, conventions: S.cache.conventions, fiches: S.compteursFiches || null, portages: moduleActif('portage') ? S.cache.portage : [], echangesPortage: moduleActif('portage') ? S.cache.portageEchanges : [], journalPortage: moduleActif('portage') ? S.cache.portageJournal : [], joursConv: P('partenaires.alerteJours'), materiel: S.cache.materiel, emprunts: S.cache.emprunts.filter(e => !e.rendu), joursPeremption: P('materiel.alertePeremptionJours'), accueils: moduleActif('accueils') ? S.cache.accueils : [], benevoles: S.cache.contacts, categorieBenevole: P('annuaire.rubriques.activiteBenevole'), seuilHeures: P('accueils.seuilRetardHeures'),
+    depenses: budgetsPrets ? S.cache.depenses : [], budgets: budgetsPrets ? P('listes.budgets') : [], initiauxBudgets: budgetsPrets ? ((S.cache.parametres.find(x => x.id === `budgets-${an.slice(3)}`) || {}).initiaux || {}) : {}, seuilPourcentBudget: P('budgets.seuilAlertePourcent'),
+    regie: regiePrete ? S.cache.regie : [], joursAlerteRegie: P('regie.alerteJours') });
   al.push(...L.alertesJournalResidence(S.cache.residenceJournal, aujourdhui(), P('residence.alerteJournalHeures')));
   const lib = { crit: ['p-crit', 'Urgent'], warn: ['p-warn', 'À regarder'], info: ['p-bleu', 'À faire'] };
   return `<div class="card alertes" style="margin-top:16px"><h2>Alertes</h2>${al.length ? al.map(a => `<button class="row" style="width:100%;background:none;border:0;border-top:1px solid var(--ligne);text-align:left" data-action="${a.act ? 'open-act' : 'nav'}" ${a.act ? `data-id="${a.act}"` : `data-v="${a.vue}"${a.tab ? ` data-tab="${a.tab}"` : ''}`}>
     <span class="pill ${lib[a.niveau][0]}">${lib[a.niveau][1]}</span><div class="grow">${esc(a.texte)}</div></button>`).join('') : '<div class="empty"><b>Aucune alerte</b>Tout est à jour.</div>'}</div>`;
+}
+// Effectifs (depuis 1.28.0, demande de Madeleine) : compteurs automatiques, comptés côté serveur (voir compterEffectifs, adhesions.js) sans télécharger les fiches ni l'annuaire.
+// Affiche un repère de chargement tant que le résultat n'est pas encore revenu (quelques dizaines de millisecondes), jamais un zéro trompeur.
+// Portage de repas (depuis 1.29.0) : remonté ici seulement si l'écran Portage a déjà été ouvert une fois dans la session (même principe que les alertes régie/budgets) ; sinon rien n'est lu en plus.
+function effectifsCard() {
+  const e = S.compteursEffectifs;
+  const portagePret = moduleActif('portage') && pret('portage');
+  const nbPortage = portagePret ? S.cache.portage.filter(d => L.evenementsPortage(d).length && L.champsPortage(d).etat !== 'arrete').length : null;
+  const ligne = (lab, v, vue) => `<button class="stat-row" style="width:100%;background:none;border:0;border-top:1px solid var(--ligne);text-align:left;cursor:pointer" data-action="nav" data-v="${vue}"><span class="lab">${lab}</span><span class="v">${e ? v : '…'}</span></button>`;
+  return `<div class="card" style="margin-top:16px"><h2>Effectifs</h2>
+    ${ligne('Adhérent·es', e && e.adherents, 'seniors')}${ligne('Résident·es', e && e.residents, 'seniors')}${ligne('Autres publics', e && e.autre, 'seniors')}${ligne('Annuaire (bénévoles, intervenant·es, partenaires, collègues)', e && e.annuaire, 'annuaire')}
+    ${moduleActif('portage') ? `<button class="stat-row" style="width:100%;background:none;border:0;border-top:1px solid var(--ligne);text-align:left;cursor:pointer" data-action="nav" data-v="portage"><span class="lab">Portage de repas</span><span class="v">${nbPortage === null ? '—' : nbPortage}</span></button>` : ''}
+    <p class="sub" style="margin:8px 0 0">Comptés automatiquement, mis à jour à chaque ouverture de l'accueil.${moduleActif('portage') ? ' Portage : bénéficiaires actuellement en service, affiché après une première visite de cet écran dans la session — nombre différent de celui du filtre « Portage de repas » de l\'écran Personnes, qui compte toutes les fiches cochées.' : ''}</p></div>`;
 }
 export function accueil() {
   const auj = aujourdhui(), sem = ajouterJours(auj, 7);
@@ -43,6 +62,7 @@ export function accueil() {
     <button class="tile ${retard.length ? 'alert' : ''}" data-action="nav" data-v="taches"><span class="n">${retard.length}</span><span class="l">Tâches en retard</span></button>
   </div>
   ${alertesCard()}
+  ${effectifsCard()}
   <div class="card" style="margin-top:16px"><h2>Que voulez-vous faire ?</h2><div class="quick">
     <button class="btn" data-action="senior-form">+ Nouvelle personne</button>
     <button class="btn blue" data-action="nav" data-v="activites">Activités et appel</button>
@@ -99,7 +119,9 @@ function seniorsListe() {
     <div class="quick"><button class="btn" data-action="senior-form">+ Nouvelle personne</button><button class="btn sec" data-action="importer" data-cible="seniors">Importer une liste</button><button class="btn sec" data-action="export-seniors">Exporter (Excel)</button></div></div>
   ${adhs.barreOnglets()}
   <input class="search" id="rech" type="search" placeholder="Chercher : nom, prénom, nom de jeune fille, date de naissance (jj/mm/aaaa ou année)…" aria-label="Chercher une personne" value="${esc(S.recherche)}">
-  <div class="filters">${[['tous', 'Tous'], ['adherent', 'Adhérents'], ['resident', 'Résidents'], ['autre', 'Autres'], ['portage', 'Portage de repas']].map(([k, l]) => `<button data-action="filtre-statut" data-v="${k}" aria-pressed="${S.filtreStatut === k}">${l}</button>`).join('')}</div>
+  <div class="filters">${(() => { const n = k => k === 'tous' ? S.cache.seniors.length : k === 'portage' ? S.cache.seniors.filter(s => !!s.portage).length : S.cache.seniors.filter(s => s.statut === k).length;
+    return [['tous', 'Tous'], ['adherent', 'Adhérents'], ['resident', 'Résidents'], ['autre', 'Autres'], ['portage', 'Portage de repas']].map(([k, l]) => `<button data-action="filtre-statut" data-v="${k}" aria-pressed="${S.filtreStatut === k}">${l} (${n(k)})</button>`).join(''); })()}</div>
+  ${S.filtreStatut === 'portage' ? `<p class="sub" style="margin:-6px 0 10px">« Portage de repas » compte ici toutes les fiches où la case est cochée, même si le service est arrêté. Le nombre affiché sur l'accueil et dans Portage › Statistiques annuelles ne compte, lui, que les bénéficiaires actuellement en service : les deux sont justes, mais ne mesurent pas tout à fait la même chose.</p>` : ''}
   <div id="liste">${listeSeniors()}</div>`;
 }
 export function afterSeniors() { adhs.migrer(); adhs.apresAdhesions(); const r = $('#rech'); if (r) r.oninput = () => { S.recherche = r.value; $('#liste').innerHTML = listeSeniors(); }; }
@@ -114,7 +136,7 @@ function seniorForm(id) {
   <div class="two"><div class="field"><label for="n1">Prénom</label><input id="n1" value="${esc(s.prenom || '')}" autocomplete="off"></div>
   <div class="field"><label for="n2">Nom</label><input id="n2" value="${esc(s.nom || '')}" autocomplete="off"></div></div>
   <p class="sub">Vous pouvez n'indiquer que le prénom ou que le nom pour l'instant, et compléter l'autre dès que possible.</p>
-    <div class="field"><label for="n10">Nom de jeune fille <small class="sub">(facultatif, pour les dames)</small></label><input id="n10" value="${esc(s.nomNaissance || '')}" autocomplete="off"></div>
+  <div class="field"><label for="n10">Nom de jeune fille <small class="sub">(facultatif, pour les dames)</small></label><input id="n10" value="${esc(s.nomNaissance || '')}" autocomplete="off"></div>
   <div class="two"><div class="field"><label for="n3">Date de naissance</label><input id="n3" type="date" value="${esc(s.naissance || '')}"></div>
   <div class="field"><label for="n4">Sexe (pour les statistiques)</label><select id="n4"><option value="" ${!s.sexe ? 'selected' : ''}>Non précisé</option><option value="F" ${s.sexe === 'F' ? 'selected' : ''}>Femme</option><option value="H" ${s.sexe === 'H' ? 'selected' : ''}>Homme</option></select></div></div>
   <div class="field"><label for="n5">Statut</label><select id="n5"><option value="adherent" ${s.statut === 'adherent' ? 'selected' : ''}>Adhérent·e</option><option value="resident" ${s.statut === 'resident' ? 'selected' : ''}>Résident·e (adhésion comprise dans le loyer)</option><option value="autre" ${s.statut === 'autre' ? 'selected' : ''}>Autre public</option></select></div>

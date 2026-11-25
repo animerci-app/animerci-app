@@ -206,9 +206,9 @@ export function trouverContact(liste, valeur, valeurId) {
 export const nomComplet = x => [x.prenom, x.nom].filter(Boolean).join(' ');
 /** Affichage en liste : « DUPONT Marie » ; un organisme (association…) garde son nom tel quel. */
 export const nomAffiche = x => {
-    if (x.organisme || !x.prenom) return x.nom || '';
-    if (!x.nom) return x.prenom; // seul le prénom est connu pour l'instant : fiche à compléter
-    return `${String(x.nom).toLocaleUpperCase('fr')} ${x.prenom}`;
+  if (x.organisme || !x.prenom) return x.nom || '';
+  if (!x.nom) return x.prenom; // seul le prénom est connu pour l'instant : fiche à compléter
+  return `${String(x.nom).toLocaleUpperCase('fr')} ${x.prenom}`;
 };
 /** Tri par patronyme puis prénom (sans tenir compte des accents ni des majuscules). */
 export function comparerPatronyme(a, b) {

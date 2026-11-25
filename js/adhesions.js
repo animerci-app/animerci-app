@@ -104,6 +104,15 @@ export async function compterFiches(auj = aujourdhui()) {
   const [adh, verif] = await Promise.all([store.nombre('seniors', ['adhAnnee', '<', cible]), store.nombre('seniors', ['verifieLe', '<', L.seuilVerification(auj, mois)])]);
   return { adh, verif, cible, mois };
 }
+// Effectifs (depuis 1.28.0, demande de Madeleine) : compteurs automatiques sur l'accueil, calculés côté serveur (4 lectures, une seule fois par ouverture de l'accueil),
+// sans jamais relire toutes les fiches ni tout l'annuaire. « Autre public » est déduit (total − adhérents − résident·es) plutôt que recompté séparément, pour rester valable
+// quel que soit le libellé exact utilisé en interne pour ce statut.
+export async function compterEffectifs() {
+  const [adherents, residents, personnes, annuaire] = await Promise.all([
+    store.nombre('seniors', ['statut', '==', 'adherent']), store.nombre('seniors', ['statut', '==', 'resident']), store.nombre('seniors'), store.nombre('contacts')
+  ]);
+  return { adherents, residents, autre: Math.max(0, personnes - adherents - residents), personnes, annuaire };
+}
 
 export const actions = {
   'sen-tab': el => { S.ongletSen = el.dataset.v; render(); },

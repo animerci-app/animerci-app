@@ -6,11 +6,11 @@ from playwright.sync_api import sync_playwright
 import re
 errs = []; fails = []
 def check(c, msg):
-      print(('ok - ' if c else 'ECHEC - ') + msg)
-      if not c: fails.append(msg)
-        SANTE = re.compile(r'hospital|maladie|décès|deces|EHPAD|médic|diagnostic|traitement|allerg|handicap', re.I)
+    print(('ok - ' if c else 'ECHEC - ') + msg)
+    if not c: fails.append(msg)
+SANTE = re.compile(r'hospital|maladie|décès|deces|EHPAD|médic|diagnostic|traitement|allerg|handicap', re.I)
 with sync_playwright() as p:
-      b = p.chromium.launch(executable_path='/usr/bin/google-chrome', args=['--no-sandbox'])
+    b = p.chromium.launch(executable_path='/usr/bin/google-chrome', args=['--no-sandbox'])
     ctx = b.new_context(viewport={'width': 1280, 'height': 900}); pg = ctx.new_page()
     pg.on('console', lambda m: errs.append(m.text) if m.type == 'error' and 'fonts.g' not in m.text and 'ERR_' not in m.text else None)
     pg.on('pageerror', lambda e: errs.append(str(e)))
