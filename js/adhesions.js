@@ -66,7 +66,7 @@ function formReglement(id) {
     const err = L.erreurAdhesion(nv); if (err) return toast(err);
     closeModal(); await enregistrerAdhesions(s, L.avecAdhesion(s, nv)); toast('Règlement enregistré');
   };
-  const ann = document.getElementById('rAnn'); if (ann) ann.onclick = () => confirmer('Annuler le règlement ?', `L'adhésion ${an} de ${s.prenom} ${s.nom} repassera « à régler ».`, 'Annuler le règlement', async () => { await enregistrerAdhesions(s, L.avecAdhesion(s, { ...a, paye: false })); toast('Règlement annulé'); });
+  const ann = document.getElementById('rAnn'); if (ann) ann.onclick = () => confirmer('Annuler le règlement ?', `L'adhésion ${an} de ${L.nomComplet(s)} repassera « à régler ».`, 'Annuler le règlement', async () => { await enregistrerAdhesions(s, L.avecAdhesion(s, { ...a, paye: false })); toast('Règlement annulé'); });
 }
 function formMessage(id) {
   const s = seniorDe(id); if (!s) return; const an = anneeAdh();
