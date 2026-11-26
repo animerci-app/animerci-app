@@ -1031,7 +1031,7 @@ export function alertesPortage({ portages = [], echanges = [], auj }) {
    Lot E (v1.20.0) : accès provisoires de l'équipe, vue restreinte des personnes, accueils (jeunes adultes, services civiques, stagiaires), bénévoles
    Tout est écrit pour l'ORGANISATION du service : aucune donnée de santé.
    ============================================================================================================ */
-export const MODULES_ACCES = { materiel: 'Matériel', portage: 'Portage de repas', budgets: 'Budgets et régie', inscriptions: 'Saisie des inscriptions', residence: 'Résidence' };
+export const MODULES_ACCES = { materiel: 'Matériel', portage: 'Portage de repas', budgets: 'Budgets et régie', inscriptions: 'Saisie des inscriptions', residence: 'Résidence', aide: 'Aide intégrée' };
 /** « 2026-12-31 » → 20261231 (0 si la date est invalide). Sert à comparer sans fuseau et à écrire la règle Firestore. */
 export const dateEnNombre = iso => (/^\d{4}-\d{2}-\d{2}$/.test(iso || '') ? Number(iso.replace(/-/g, '')) : 0);
 /**
@@ -1043,6 +1043,8 @@ export function accesActif(user, module, auj) {
   if (user.role === 'admin') return true;
   if (user.role !== 'intervenant' && user.role !== 'benevole') return false;
   if (module === 'inscriptions' && user.role !== 'benevole') return false;
+  // Aide intégrée (v1.33.0) : jamais pour les intervenant·es ni les partenaires, seulement pour les bénévoles choisis un par un par l'administratrice.
+  if (module === 'aide' && user.role !== 'benevole') return false;
   if (!(user.acces && user.acces[module] === true)) return false;
   const fin = Number(user.accesFin) || 0;
   return !fin || dateEnNombre(auj) <= fin;
@@ -1056,7 +1058,7 @@ export function champsAcces(cases, jusqu) {
 /** Texte court des accès d'un compte, pour la liste de l'Équipe. */
 export function resumeAcces(user, auj) {
   if (!user || (user.role !== 'intervenant' && user.role !== 'benevole')) return [];
-  const R = Object.entries(MODULES_ACCES).filter(([k]) => !(k === 'inscriptions' && user.role !== 'benevole') && user.acces && user.acces[k] === true).map(([, l]) => l);
+  const R = Object.entries(MODULES_ACCES).filter(([k]) => !(k === 'inscriptions' && user.role !== 'benevole') && !(k === 'aide' && user.role !== 'benevole') && user.acces && user.acces[k] === true).map(([, l]) => l);
   if (!R.length) return [];
   const fin = Number(user.accesFin) || 0;
   return [`Accès : ${R.join(', ')}${fin ? (dateEnNombre(auj) > fin ? ' (terminé le ' : ' (jusqu\'au ') + fmtDate(user.accesJusqu || String(fin).replace(/^(\d{4})(\d{2})(\d{2})$/, '$1-$2-$3')) + ')' : ''}`];

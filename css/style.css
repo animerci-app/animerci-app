@@ -242,3 +242,14 @@ nav.side .brand{order:-2}
 .pw-oeil.on{opacity:1;background:#F4E4EC}
 .pw-oeil:focus-visible{outline:2px solid var(--prune);opacity:1}
 input[type=password]::-ms-reveal,input[type=password]::-ms-clear{display:none}
+
+/* Aide intégrée (menu Aide, v1.33.0) : sommaire cliquable en haut de l'écran, contenu en dessous */
+.aide-som{display:flex;flex-wrap:wrap;gap:20px;margin-bottom:18px;padding:14px 18px;background:var(--rose-pale);border-radius:14px}
+.aide-som-groupe{min-width:190px}
+.aide-som-groupe b{display:block;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--prune);margin-bottom:4px}
+.aide-som-groupe ul{margin:0;padding:0;list-style:none}
+.aide-som-groupe li{margin:3px 0}
+.aide-som-groupe a{color:var(--encre);text-decoration:none;border-bottom:1px solid transparent}
+.aide-som-groupe a:hover,.aide-som-groupe a:focus{color:var(--prune);border-bottom-color:currentColor}
+.aide-corps h2{margin-top:22px}
+.aide-corps h2:first-child{margin-top:0}

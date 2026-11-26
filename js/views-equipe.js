@@ -60,7 +60,9 @@ function formulaire(id) {
     const avecAcces = role === 'intervenant' || role === 'benevole';
     const jusqu = avecAcces ? $('#ea-fin').value : '';
     if (jusqu && !/^\d{4}-\d{2}-\d{2}$/.test(jusqu)) return toast('La date de fin d\'accès est invalide.');
-    const acces = L.champsAcces(avecAcces ? { materiel: $('#ea-materiel').checked, portage: $('#ea-portage').checked, budgets: $('#ea-budgets').checked, residence: $('#ea-residence').checked, inscriptions: role === 'benevole' && $('#ea-inscriptions').checked } : {}, jusqu);
+    // « Aide intégrée » ne se coche pas ici mais dans le menu Aide (onglet « Qui a accès ») : on garde sa valeur actuelle, quels que soient les autres accès modifiés dans ce formulaire.
+    const aideActuel = !!(u.acces && u.acces.aide);
+    const acces = L.champsAcces({ ...(avecAcces ? { materiel: $('#ea-materiel').checked, portage: $('#ea-portage').checked, budgets: $('#ea-budgets').checked, residence: $('#ea-residence').checked, inscriptions: role === 'benevole' && $('#ea-inscriptions').checked } : {}), aide: aideActuel }, jusqu);
     if (role === 'partenaire' && !partenaireId) return toast('Choisissez le partenaire concerné.');
     const cp = partenaireId ? S.cache.contacts.find(c => c.id === partenaireId) : null, partenaireNom = cp ? L.libelleContact(L.normContact(cp)) : '';
     const btn = $('#saveEq'); btn.disabled = true;

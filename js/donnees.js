@@ -107,6 +107,8 @@ export function besoins(c) {
     add('seances', `bilan-${du}-${au}`, [['date', '>=', du], ['date', '<=', au]]);
   }
   if (v === 'equipe') { add('users', 'all'); add('contacts', 'all'); }
+  // Aide intégrée (v1.33.0) : contenu statique (aucune lecture) ; l'onglet « Qui a accès » liste les bénévoles de l'équipe.
+  if (v === 'aide') add('users', 'all');
   // Accueils (lot E) : toutes les fiches (quelques dizaines) et l'Annuaire (bénévoles, pour les chiffres)
   if (v === 'accueils') { add('accueils', 'all'); add('contacts', 'all'); }
   // Questionnaires et sondages (lot J) : tous les questionnaires (petite liste) ; les réponses d'un questionnaire seulement quand sa fiche de résultats est ouverte.

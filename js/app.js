@@ -26,6 +26,7 @@ import * as sec from './securite.js';
 import { VERSION } from './version.js';
 import * as pa from './parametres.js';
 import { P, moduleActif } from './parametres.js';
+import * as aide from './views-aide.js';
 
 // Ordre des rubriques : regroupé en 6 blocs visuels (v1.24.0), selon l'enchaînement réel du travail du service plutôt que l'ordre d'ajout des lots (voir GROUPES ci-dessous).
 const NAV = {
@@ -34,10 +35,11 @@ const NAV = {
     ['activites', 'Activités', '♥'], ['planning', 'Planning', '▦'], ['questionnaires', 'Questionnaires', '✎'], ['voyages', 'Voyages et sorties', '✈'],
     ['annuaire', 'Annuaire', '☎'], ['partenaires', 'Partenaires', '⇄'], ['equipe', 'Équipe', '☻'],
     ['materiel', 'Matériel', '▣'], ['budgets', 'Budgets', '💰'], ['regie', 'Régie', '🏦'],
-    ['parametres', 'Paramètres', '⚙'], ['sauvegarde', 'Sécurité', '⛨']],
+    ['parametres', 'Paramètres', '⚙'], ['sauvegarde', 'Sécurité', '⛨'], ['aide', 'Aide', '?']],
   // Intervenant·e : ses activités et le planning ; bénévole : le planning. Matériel, Portage, Budgets et régie, Résidence, Saisie des inscriptions s'ajoutent si l'administratrice a coché l'accès (Équipe).
+  // Aide (v1.33.0) : jamais pour l'intervenant·e, seulement pour le ou la bénévole dont l'administratrice a coché l'accès (menu Aide, onglet « Qui a accès »).
   intervenant: [['activites', 'Mes activités', '♥'], ['planning', 'Planning', '▦'], ['portage', 'Portage', '◉'], ['residence', 'Résidence', '🏠'], ['materiel', 'Matériel', '▣'], ['budgets', 'Budgets', '💰'], ['regie', 'Régie', '🏦']],
-  benevole: [['planning', 'Planning', '▦'], ['portage', 'Portage', '◉'], ['residence', 'Résidence', '🏠'], ['materiel', 'Matériel', '▣'], ['budgets', 'Budgets', '💰'], ['regie', 'Régie', '🏦'], ['inscrire', 'Inscriptions', '✎']],
+  benevole: [['planning', 'Planning', '▦'], ['portage', 'Portage', '◉'], ['residence', 'Résidence', '🏠'], ['materiel', 'Matériel', '▣'], ['budgets', 'Budgets', '💰'], ['regie', 'Régie', '🏦'], ['inscrire', 'Inscriptions', '✎'], ['aide', 'Aide', '?']],
   partenaire: [['mespart', 'Mes échanges', '⇄']]
 };
 // Regroupement visuel du menu (v1.24.0), validé par l'équipe projet : l'enchaînement réel du travail du service plutôt que l'ordre d'ajout des lots.
@@ -48,11 +50,11 @@ const GROUPES = [
   { titre: 'Activités et sorties', cles: ['activites', 'planning', 'questionnaires', 'voyages'] },
   { titre: 'Partenaires et équipe', cles: ['annuaire', 'partenaires', 'equipe'] },
   { titre: 'Ressources', cles: ['materiel', 'budgets', 'regie'] },
-  { titre: 'Administration', cles: ['parametres', 'sauvegarde'] }
+  { titre: 'Administration', cles: ['parametres', 'sauvegarde', 'aide'] }
 ];
 // Modules facultatifs : masqués du menu quand l'administratrice les désactive (Paramètres)
 const FACULTATIFS = { taches: 'taches', bilans: 'bilans', portage: 'portage', accueils: 'accueils', budgets: 'budgets', regie: 'budgets', questionnaires: 'questionnaires', voyages: 'voyages' };
-const ACCES_NAV = { materiel: 'materiel', portage: 'portage', inscrire: 'inscriptions', budgets: 'budgets', regie: 'budgets', residence: 'residence' };
+const ACCES_NAV = { materiel: 'materiel', portage: 'portage', inscrire: 'inscriptions', budgets: 'budgets', regie: 'budgets', residence: 'residence', aide: 'aide' };
 export const navPour = user => ((user && NAV[user.role]) || []).filter(([k]) => (!(k in FACULTATIFS) || moduleActif(FACULTATIFS[k])) && (user.role === 'admin' || !(k in ACCES_NAV) || L.accesActif(user, ACCES_NAV[k], aujourdhui())));
 const ACCUEIL = { admin: 'home', intervenant: 'activites', benevole: 'planning', partenaire: 'mespart' };
 
@@ -107,7 +109,7 @@ function demarrer() {
   if (S.user && S.user.role === 'admin') minuteurPurge = setTimeout(sec.purger, 5000);
   synchroniser();
 }
-function arreter() { clearTimeout(minuteurPurge); unsubs.forEach(u => u()); unsubs = []; parts = {}; actifs = new Set(); S.pret = new Set(); S.rechGlobale = false; S.matPersonnes = false; S.compteursFiches = null; S.compteursFichesNav = -1; S.compteursEffectifs = null; S.compteursEffectifsNav = -1; S.ongletSen = 'liste'; S.anAdh = 0; S.fAdh = 'encours'; S.inscrActId = null; S.inscrQ = ''; S.ongletAccueils = null; S.liteErreur = false; S.acClos = false; S.rechAdh = ''; S.migrationFaite = false; S.portageSyncNav = -1; S.ongletPortage = 'beneficiaires'; S.fPortage = 'actifs'; S.rechPortage = ''; S.anPortage = 0; S.fEchPortage = 'tous'; S.rechEchPortage = ''; S.fJoPortage = 'tous'; S.rechJoPortage = ''; S.ongletLS = 'contacts'; S.anLS = 0; S.rechLS = ''; S.fLS = ''; S.ongletRes = 'personnel'; S.anRes = 0; S.rechRP = ''; S.rechRF = ''; S.rechRR = ''; S.rechRJ = ''; S.rechRE = ''; S.rechRI = ''; S.fJournalRes = ''; S.matHisto = null; S.ongletMat = 'inventaire'; S.fEmprunt = 'encours'; S.anMat = ''; S.rechMat = ''; S.fCatMat = ''; S.fEmpMat = ''; S.fSaisonMat = ''; S.fSigMat = false; S.compteurs = {}; S.compteursNav = -1; S.ongletBudgets = 'depenses'; S.anBudgets = 0; S.fBudget = ''; S.rechBudgets = ''; S.anRegie = 0; S.fRegie = 'toutes'; S.rechRegie = ''; S.questActId = null; S.ongletQuest = 'reponses'; S.rechVoyages = ''; COLS_ECOUTE.forEach(c => { S.cache[c] = []; }); }
+function arreter() { clearTimeout(minuteurPurge); unsubs.forEach(u => u()); unsubs = []; parts = {}; actifs = new Set(); S.pret = new Set(); S.rechGlobale = false; S.matPersonnes = false; S.compteursFiches = null; S.compteursFichesNav = -1; S.compteursEffectifs = null; S.compteursEffectifsNav = -1; S.ongletSen = 'liste'; S.anAdh = 0; S.fAdh = 'encours'; S.inscrActId = null; S.inscrQ = ''; S.ongletAccueils = null; S.liteErreur = false; S.acClos = false; S.rechAdh = ''; S.migrationFaite = false; S.portageSyncNav = -1; S.ongletPortage = 'beneficiaires'; S.fPortage = 'actifs'; S.rechPortage = ''; S.anPortage = 0; S.fEchPortage = 'tous'; S.rechEchPortage = ''; S.fJoPortage = 'tous'; S.rechJoPortage = ''; S.ongletLS = 'contacts'; S.anLS = 0; S.rechLS = ''; S.fLS = ''; S.ongletRes = 'personnel'; S.anRes = 0; S.rechRP = ''; S.rechRF = ''; S.rechRR = ''; S.rechRJ = ''; S.rechRE = ''; S.rechRI = ''; S.fJournalRes = ''; S.matHisto = null; S.ongletMat = 'inventaire'; S.fEmprunt = 'encours'; S.anMat = ''; S.rechMat = ''; S.fCatMat = ''; S.fEmpMat = ''; S.fSaisonMat = ''; S.fSigMat = false; S.compteurs = {}; S.compteursNav = -1; S.ongletBudgets = 'depenses'; S.anBudgets = 0; S.fBudget = ''; S.rechBudgets = ''; S.anRegie = 0; S.fRegie = 'toutes'; S.rechRegie = ''; S.questActId = null; S.ongletQuest = 'reponses'; S.rechVoyages = ''; S.ongletAide = 'contenu'; S.rechAide = ''; COLS_ECOUTE.forEach(c => { S.cache[c] = []; }); }
 
 /* ---------- Écrans ---------- */
 function ecranConnexion() {
@@ -150,7 +152,7 @@ function nav() {
     `<button class="nav-btn nav-compte" data-action="compte"><span aria-hidden="true" style="width:20px;text-align:center">☰</span><span>Compte</span></button>` +
     `<div class="foot"><div>${esc(S.user.nom)}</div><div style="font-size:12px;opacity:.7">Version ${VERSION}</div>${MODE_REEL ? '<button class="nav-btn" style="padding:6px 0;font-size:13px" data-action="mdp-form">Mon mot de passe</button>' : ''}${pwa.boutonInstaller()}<button class="nav-btn" style="padding:6px 0" data-action="logout">Se déconnecter</button>${MODE_REEL ? '' : '<button class="nav-btn" style="padding:6px 0;font-size:13px" data-action="reset-demo">Remettre les données de démonstration</button>'}</div>`;
 }
-const VUES = { home: core.accueil, seniors: core.seniors, taches: core.taches, planning: core.planning, bilans: core.bilans, activites: act.activites, activite: act.activite, annuaire: ann.annuaire, partenaires: part.partenaires, mespart: part.espacePartenaire, materiel: mat.materiel, budgets: bud.budgets, regie: reg.regie, portage: pg.portage, liensocial: ls.lienSocial, residence: res.residence, accueils: ac.accueils, questionnaires: quest.questionnaires, voyages: voy.voyages, inscrire: ins.inscrire, equipe: eq.equipe, sauvegarde: sec.securite, parametres: pa.parametres };
+const VUES = { home: core.accueil, seniors: core.seniors, taches: core.taches, planning: core.planning, bilans: core.bilans, activites: act.activites, activite: act.activite, annuaire: ann.annuaire, partenaires: part.partenaires, mespart: part.espacePartenaire, materiel: mat.materiel, budgets: bud.budgets, regie: reg.regie, portage: pg.portage, liensocial: ls.lienSocial, residence: res.residence, accueils: ac.accueils, questionnaires: quest.questionnaires, voyages: voy.voyages, inscrire: ins.inscrire, equipe: eq.equipe, sauvegarde: sec.securite, parametres: pa.parametres, aide: aide.aide };
 
 setRender(() => {
   synchroniser();
@@ -176,11 +178,12 @@ setRender(() => {
   if (S.view === 'voyages') voy.apresVoyages();
   if (S.view === 'inscrire') ins.apresInscrire();
   if (S.view === 'sauvegarde') sec.apresSecurite();
+  if (S.view === 'aide') aide.apresAide();
 });
 
 /* ---------- Événements ---------- */
 const actions = {
-  ...core.actions, ...act.actions, ...eq.actions, ...ann.actions, ...part.actions, ...mat.actions, ...bud.actions, ...reg.actions, ...pg.actions, ...ls.actions, ...res.actions, ...ac.actions, ...quest.actions, ...voy.actions, ...ins.actions, ...adhs.actions, ...sec.actions, ...pa.actions, ...imp.actions, ...pwa.actions,
+  ...core.actions, ...act.actions, ...eq.actions, ...ann.actions, ...part.actions, ...mat.actions, ...bud.actions, ...reg.actions, ...pg.actions, ...ls.actions, ...res.actions, ...ac.actions, ...quest.actions, ...voy.actions, ...ins.actions, ...adhs.actions, ...sec.actions, ...pa.actions, ...imp.actions, ...pwa.actions, ...aide.actions,
   'rech-globale': () => rechGlobale(),
   close: () => closeModal(),
   compte: () => {
