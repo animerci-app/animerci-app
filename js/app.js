@@ -113,9 +113,14 @@ function arreter() { clearTimeout(minuteurPurge); unsubs.forEach(u => u()); unsu
 
 /* ---------- Écrans ---------- */
 function ecranConnexion() {
+  // Astuce « readonly jusqu'au premier contact » (v1.34.0) : Chrome (et d'autres navigateurs) préremplit automatiquement,
+  // dès l'affichage, un champ reconnu comme identifiant/mot de passe — sans aucune action de la personne, mot de passe
+  // révélable par l'œil compris. Un champ `readonly` n'est jamais rempli automatiquement par le navigateur ; on retire
+  // ce `readonly` au premier contact (apresConnexion), juste avant que la personne ne tape ou n'ouvre son gestionnaire
+  // de mots de passe : la saisie normale et l'auto-remplissage choisi par la personne restent possibles.
   return `<div class="login"><div class="card"><img class="logo-login" src="icons/icon-192.png" alt="" width="72" height="72"><h1>${esc(P('nomOutil'))}</h1><p class="sub">${esc(P('nomService'))}</p>
-  ${MODE_REEL ? `<form id="fl"><div class="field"><label for="em">Adresse e-mail</label><input id="em" type="email" autocomplete="username" required></div>
-    <div class="field"><label for="pw">Mot de passe</label><input id="pw" type="password" autocomplete="current-password" required></div>
+  ${MODE_REEL ? `<form id="fl" autocomplete="off"><div class="field"><label for="em">Adresse e-mail</label><input id="em" type="email" autocomplete="username" readonly required></div>
+    <div class="field"><label for="pw">Mot de passe</label><input id="pw" type="password" autocomplete="current-password" readonly required></div>
     <div id="lerr" class="err" style="display:none" role="alert"></div>
     <div class="quick" style="margin-top:12px"><button class="btn" type="submit">Se connecter</button><button class="btn ghost" type="button" data-action="reset-mdp">Mot de passe oublié</button></div></form>`
   : `<p>Mode démonstration : les données sont fictives et restent dans ce navigateur. Choisissez une vue pour essayer l'outil.</p>
@@ -124,6 +129,18 @@ function ecranConnexion() {
     <button class="btn blue" data-action="demo" data-v="intervenant">Essayer comme intervenante (appel de son atelier)</button>
     <button class="btn sec" data-action="demo" data-v="benevole">Essayer comme bénévole (planning)</button>
     <button class="btn sec" data-action="demo" data-v="partenaire">Essayer comme partenaire (ses échanges)</button></div>`}${pwa.boutonInstaller(true)}</div></div>`;
+}
+// Retire le `readonly` des champs de connexion dès le premier contact (clic, appui tactile ou tabulation),
+// sur ordinateur comme sur smartphone ou tablette, pour autoriser la saisie et l'auto-remplissage volontaire.
+function apresConnexion() {
+  if (!MODE_REEL) return;
+  ['em', 'pw'].forEach(id => {
+    const champ = $('#' + id); if (!champ) return;
+    const activer = () => champ.removeAttribute('readonly');
+    champ.addEventListener('focus', activer, { once: true });
+    champ.addEventListener('mousedown', activer, { once: true });
+    champ.addEventListener('touchstart', activer, { once: true, passive: true });
+  });
 }
 function ecranSansRole() {
   return `<div class="login"><div class="card"><h1>Accès à activer</h1><p>Votre compte (${esc(S.user.email)}) est bien connecté, mais aucun rôle ne lui a encore été attribué. Demandez à l'administratrice de l'activer.</p>
@@ -158,7 +175,7 @@ setRender(() => {
   synchroniser();
   const main = $('#main'), side = $('#nav'), banner = $('#banner');
   banner.innerHTML = MODE_REEL ? '' : '<div class="demo-banner">Mode démonstration : données fictives, enregistrées uniquement dans ce navigateur</div>';
-  if (!S.user) { side.innerHTML = ''; side.style.display = 'none'; document.querySelector('.app').style.display = 'block'; main.innerHTML = ecranConnexion(); return; }
+  if (!S.user) { side.innerHTML = ''; side.style.display = 'none'; document.querySelector('.app').style.display = 'block'; main.innerHTML = ecranConnexion(); apresConnexion(); return; }
   if (!S.user.role) { side.style.display = 'none'; main.innerHTML = ecranSansRole(); return; }
   document.querySelector('.app').style.display = ''; side.style.display = '';
   const autorisees = navPour(S.user).map(x => x[0]).concat(['admin', 'intervenant'].includes(S.user.role) ? ['activite'] : []);
