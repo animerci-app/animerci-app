@@ -2,12 +2,20 @@
 // Tout est écrit pour l'ORGANISATION du service (qui reçoit le portage, quels jours, depuis quand) : aucun motif ni champ de santé.
 // Accès : l'administratrice et l'équipe (intervenant·es, bénévoles) consultent et saisissent ; chaque événement garde « saisi par ». La suppression, l'initialisation et les exports restent à l'administratrice.
 // L'équipe ne lit pas les fiches des personnes : un document « portage » par bénéficiaire recopie le strict nécessaire (nom, sexe, année de naissance, jours de livraison).
+// Depuis 1.32.0 (retour de Philippe du 26/11/2026) : le statut (Adhérent/Résident/Autre) de chaque bénéficiaire est recopié dans le document « portage » ci-dessus (champ non
+// sensible, visible par toute l'équipe ayant accès à Portage). Ses coordonnées (téléphone, adresse) sont recopiées dans une collection séparée, « portageCoord », réservée à
+// l'administratrice et aux bénévoles (y compris étudiants, services civiques et stagiaires, qui utilisent ce même rôle) : masquées pour les intervenant·es, qui n'en ont pas
+// besoin pour leur travail (voir firestore.rules). Les partenaires n'ont, comme avant, aucun accès à cet écran. « + Nouvelle personne », « Importer une liste » et
+// « Exporter (Excel) » (onglet Bénéficiaires) restent réservés à l'administratrice : ils agissent sur la fiche Personnes, que seule l'administratrice peut lire et écrire.
 // Les calculs (états, statistiques, alertes) sont dans logic.js ; ici : les écrans, les formulaires et la mise en accord avec les fiches.
 import { store } from './store.js';
 import * as L from './logic.js';
 import { P, moduleActif } from './parametres.js';
 import { classeur, documentHtml, imprimer } from './backup.js';
 import { S, pret, chargement, $, esc, aujourdhui, initiales, render, toast, modal, closeModal, confirmer, telecharger, sauver, mettreCorbeille, peutAdmin } from './ui.js';
+
+/** Administratrice ou bénévole (y compris étudiant·e, service civique, stagiaire : même rôle) : seuls à voir les coordonnées (téléphone, adresse). Jamais les intervenant·es ni les partenaires. */
+const peutCoordPortage = () => S.user && (S.user.role === 'admin' || S.user.role === 'benevole');
 
 const ONGLETS = [['beneficiaires', 'Bénéficiaires'], ['journal', 'Journal de suivi'], ['echanges', 'Échanges avec le prestataire'], ['stats', 'Statistiques annuelles']];
 export const ongletPortage = () => (ONGLETS.some(o => o[0] === S.ongletPortage) ? S.ongletPortage : 'beneficiaires');
@@ -26,13 +34,15 @@ export const initialise = () => S.cache.parametres.some(x => x.id === 'portage' 
 // Une fois par ouverture de l'écran : crée le document des bénéficiaires qui n'en ont pas, recopie les changements de nom ou de jours. Ne change jamais l'état d'un bénéficiaire.
 export async function synchroniser() {
   if (!peutAdmin() || S.view !== 'portage' || !moduleActif('portage')) return;
-  if (!pret('portage') || !pret('seniors') || !pret('parametres')) return;
+  if (!pret('portage') || !pret('seniors') || !pret('parametres') || !pret('portageCoord')) return;
   if (S.portageSyncNav === S.navId) return;
   S.portageSyncNav = S.navId;
   const premiere = !initialise();
   const plan = L.planSynchroPortage(S.cache.seniors, S.cache.portage, { auj: aujourdhui(), par: S.user.nom, le: maintenant(), premiere });
   try {
     for (const d of plan) await store.save('portage', d);
+    // Coordonnées (téléphone, adresse ; v1.32.0) : tenues à jour pour chaque bénéficiaire déjà suivi, même si seul ce champ a changé (planSynchroPortage ne compare que nom/sexe/jours).
+    for (const c of L.planSynchroCoordPortage(S.cache.seniors, S.cache.portage, S.cache.portageCoord || [])) await store.save('portageCoord', c);
     if (premiere) await store.save('parametres', { id: 'portage', initialise: maintenant() });
   } catch (e) { toast('Mise en accord du portage impossible : ' + e.message); }
 }
@@ -45,6 +55,8 @@ export async function apresFiche(avant, senior) {
     const t = d && L.evenementFichePortage(d, { avant: !!(avant && avant.portage), apres: !!senior.portage }, ctx);
     if (t) { d = t; change = true; }
     if (d && change) await store.save('portage', d);
+    // Coordonnées (v1.32.0) : toujours tenues à jour dès qu'il existe (ou vient d'être créé) un suivi pour cette personne, même si seuls le téléphone ou l'adresse ont changé.
+    if (d) await store.save('portageCoord', { id: senior.id, ...L.copieCoordPortage(senior) });
   } catch (e) { console.warn('portage : mise en accord avec la fiche', e); }
 }
 
@@ -53,8 +65,10 @@ export function portage() {
   if (!pret('portage')) return chargement('Portage de repas');
   const tab = ongletPortage(), admin = peutAdmin();
   const ajout = { beneficiaires: null, journal: ['pg-jo-form', '+ Nouvelle entrée'], echanges: ['pg-ech-form', '+ Nouvel échange'], stats: null }[tab];
+  // Depuis 1.32.0 : « + Nouvelle personne », « Importer une liste » et « Exporter (Excel) » sur l'onglet Bénéficiaires — réservés à l'administratrice (la fiche Personnes, cible de ces 3 outils, reste une collection que seule l'administratrice peut lire et écrire ; voir firestore.rules).
+  const outilsBenef = tab === 'beneficiaires' && admin ? '<button class="btn" data-action="senior-form" data-portage="1">+ Nouvelle personne</button><button class="btn sec" data-action="importer" data-cible="seniors">Importer une liste</button><button class="btn sec" data-action="export-seniors">Exporter (Excel)</button>' : '';
   return `<div class="top"><div><h1>Portage de repas</h1><p>Les personnes qui reçoivent le portage à domicile : jours de livraison, interruptions, reprises et arrêts, journal de suivi, échanges avec l'entreprise de restauration et chiffres de l'année.</p></div>
-    <div class="quick">${ajout ? `<button class="btn" data-action="${ajout[0]}">${ajout[1]}</button>` : ''}${tab === 'stats' && admin ? '<button class="btn sec" data-action="pg-xlsx">Excel (.xlsx)</button><button class="btn sec" data-action="pg-pdf">PDF / Imprimer</button>' : ''}</div></div>
+    <div class="quick">${outilsBenef || (ajout ? `<button class="btn" data-action="${ajout[0]}">${ajout[1]}</button>` : '')}${tab === 'stats' && admin ? '<button class="btn sec" data-action="pg-xlsx">Excel (.xlsx)</button><button class="btn sec" data-action="pg-pdf">PDF / Imprimer</button>' : ''}</div></div>
   <div class="filters" role="tablist">${ONGLETS.map(([k, l]) => `<button role="tab" data-action="pg-tab" data-v="${k}" aria-pressed="${tab === k}">${l}</button>`).join('')}</div>
   ${tab === 'journal' ? vueJournal() : tab === 'echanges' ? vueEchanges() : tab === 'stats' ? vueStats() : vueBeneficiaires()}`;
 }
@@ -82,6 +96,8 @@ function listeBeneficiaires() {
   if (!rows.length) return `<div class="card"><div class="empty"><b>Aucun bénéficiaire ici</b>${docsPortage().length ? 'Essayez un autre filtre.' : peutAdmin() ? 'Cochez « Reçoit le portage de repas » dans la fiche d\'une personne : elle apparaît ici.' : 'L\'administratrice n\'a pas encore ouvert cet écran : la liste apparaîtra après sa première visite.'}</div></div>`;
   return `<p class="sub">${rows.length} personne${rows.length > 1 ? 's' : ''}</p>` + rows.map(d => ligneBeneficiaire(d, auj)).join('');
 }
+// Coordonnées (téléphone, adresse) du bénéficiaire, pour l'administratrice et les bénévoles seulement (v1.32.0 ; voir firestore.rules).
+const coordDe = d => (S.cache.portageCoord || []).find(c => c.id === d.seniorId);
 function ligneBeneficiaire(d, auj) {
   const c = L.champsPortage(d), ev = L.evenementsPortage(d), der = ev[ev.length - 1], jours = L.libelleFrequence({ jours: d.jours, precision: d.precision });
   const retard = c.etat === 'interrompu' && c.reprisePrevue && c.reprisePrevue < auj;
@@ -90,9 +106,18 @@ function ligneBeneficiaire(d, auj) {
   const boutons = c.etat === 'encours' ? `<button class="btn sec" data-action="pg-evt" data-id="${esc(d.id)}" data-type="interruption">Interrompre</button><button class="btn sec" data-action="pg-evt" data-id="${esc(d.id)}" data-type="arret">Arrêter</button>`
     : c.etat === 'interrompu' ? `<button class="btn" data-action="pg-evt" data-id="${esc(d.id)}" data-type="reprise">Reprendre</button><button class="btn sec" data-action="pg-evt" data-id="${esc(d.id)}" data-type="arret">Arrêter</button>`
       : `<button class="btn sec" data-action="pg-evt" data-id="${esc(d.id)}" data-type="debut">Recommencer le service</button>`;
+  let coord = '';
+  if (peutCoordPortage()) {
+    const k = coordDe(d);
+    if (k) {
+      const lignesTel = [k.telFixe, k.telPortable].filter(Boolean).join(' · ');
+      const adr = d.statut === 'resident' ? `${esc(P('residence.nom') || 'Résidence')}${k.appartement ? ', appt ' + esc(k.appartement) : ''}` : [k.adresse, k.commune].filter(Boolean).map(esc).join(', ');
+      coord = `<div class="sub">${lignesTel ? esc(lignesTel) : 'Aucun téléphone enregistré'}${adr ? ' · ' + adr : ''}</div>`;
+    }
+  }
   return `<div class="card" style="margin-bottom:8px"><div class="row" style="align-items:flex-start;gap:10px"><span class="av" aria-hidden="true">${esc(initiales(nomDe(d)))}</span>
-    <div class="grow"><b>${esc(nomDe(d))}</b> <span class="pill ${PILL[c.etat]}">${L.ETATS_PORTAGE[c.etat]}</span>
-    <div class="sub">${esc(jours)} · début : ${esc(L.libelleDebutPortage(d))}</div>${detail ? `<div class="sub">${detail}</div>` : ''}</div></div>
+    <div class="grow"><b>${esc(nomDe(d))}</b> <span class="pill ${PILL[c.etat]}">${L.ETATS_PORTAGE[c.etat]}</span> <span class="pill">${esc(L.libelleStatut(d.statut))}</span>
+    <div class="sub">${esc(jours)} · début : ${esc(L.libelleDebutPortage(d))}</div>${coord}${detail ? `<div class="sub">${detail}</div>` : ''}</div></div>
     <div class="quick" style="margin-top:8px">${boutons}<button class="btn ghost" data-action="pg-histo" data-id="${esc(d.id)}">Historique</button></div></div>`;
 }
 

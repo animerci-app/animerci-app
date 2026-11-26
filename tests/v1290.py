@@ -24,9 +24,10 @@ with sync_playwright() as p:
     check(any(re.match(r'^Résidents \(\d+\)$', t) for t in filtres), 'le filtre « Résidents » affiche un nombre : ' + ' | '.join(filtres))
     check(any(re.match(r'^Autres \(\d+\)$', t) for t in filtres), 'le filtre « Autres » affiche un nombre : ' + ' | '.join(filtres))
     check(any(re.match(r'^Portage de repas \(\d+\)$', t) for t in filtres), 'le filtre « Portage de repas » affiche un nombre : ' + ' | '.join(filtres))
-    # Cohérence : Adhérents + Résidents + Autres == Tous
+    # Cohérence : Adhérents + Résidents + Autres <= Tous (égalité seulement si aucun « Autre public » ne reçoit le portage ;
+    # depuis 1.31.0, « Autres » exclut les bénéficiaires du portage — voir tests/v1310.py pour la vérification précise de ce cas)
     nb = {m.group(1): int(m.group(2)) for t in filtres for m in [re.match(r'^(.+) \((\d+)\)$', t)] if m}
-    check(nb.get('Adhérents', -1) + nb.get('Résidents', -1) + nb.get('Autres', -1) == nb.get('Tous', -9999), f'Adhérents + Résidents + Autres = Tous ({nb})')
+    check(nb.get('Adhérents', -1) + nb.get('Résidents', -1) + nb.get('Autres', -1) <= nb.get('Tous', -9999), f'Adhérents + Résidents + Autres <= Tous ({nb})')
 
     # --- Carte Effectifs de l'accueil : Portage absent (ou non chiffré) avant toute visite de l'écran Portage ---
     pg.click('[data-v=home]'); pg.wait_for_selector('h2:has-text("Effectifs")'); pg.wait_for_timeout(600)

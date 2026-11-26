@@ -891,10 +891,28 @@ export function avecEvenementPortage(doc, ev) {
   return { ...res, ...champsPortage(res) };
 }
 const anneeNaissance = n => { const a = Number(String(n || '').slice(0, 4)); return a >= 1850 && a <= 2200 ? a : 0; };
-/** Recopie, depuis la fiche d'une personne, ce que l'équipe doit voir du portage (le moins possible : pas de date de naissance complète, pas de coordonnées). */
+/** Recopie, depuis la fiche d'une personne, ce que l'équipe doit voir du portage (le moins possible : pas de date de naissance complète, pas de coordonnées).
+ *  Le statut (Adhérent/Résident/Autre public, v1.32.0) est une donnée d'organisation, pas une coordonnée : il reste ici, visible par toute l'équipe ayant accès à Portage. */
 export function copiePortage(senior, anciens = {}) {
   const jours = [...new Set((senior.portage && senior.portage.jours) || [])].filter(j => Number.isInteger(j) && j >= 0 && j < 7).sort((a, b) => a - b);
-  return { seniorId: senior.id, nom: String(senior.nom || ''), prenom: String(senior.prenom || ''), sexe: senior.sexe === 'H' || senior.sexe === 'F' ? senior.sexe : '', anneeNaissance: anneeNaissance(senior.naissance), jours, precision: String((senior.portage && senior.portage.precision) || ''), ...anciens };
+  return { seniorId: senior.id, nom: String(senior.nom || ''), prenom: String(senior.prenom || ''), sexe: senior.sexe === 'H' || senior.sexe === 'F' ? senior.sexe : '', anneeNaissance: anneeNaissance(senior.naissance), statut: senior.statut, jours, precision: String((senior.portage && senior.portage.precision) || ''), ...anciens };
+}
+/** Recopie, depuis la fiche d'une personne, les seules coordonnées utiles à l'organisation des livraisons (téléphone, adresse) — jamais le reste de la fiche (v1.32.0).
+ *  Vit dans une collection séparée (portageCoord), réservée à l'administratrice et aux bénévoles : le statut, lui, n'est pas une coordonnée et reste dans le document « portage » (voir copiePortage). */
+export function copieCoordPortage(senior) {
+  const tel = telephones(senior), resident = senior.statut === 'resident';
+  return { seniorId: senior.id, telFixe: tel.fixe, telPortable: tel.portable, adresse: resident ? '' : String(senior.adresse || ''), commune: resident ? '' : String(senior.commune || ''), appartement: resident ? String(senior.appartement || '') : '' };
+}
+/** Coordonnées à créer ou mettre à jour (comparaison avec ce qui existe déjà) pour chaque bénéficiaire déjà suivi dans Portage — qu'il soit en service, interrompu ou arrêté. */
+export function planSynchroCoordPortage(seniors, portages, coords) {
+  const parId = Object.fromEntries((seniors || []).map(s => [s.id, s])), coordParId = Object.fromEntries((coords || []).map(c => [c.id, c])), A = [], vus = new Set();
+  for (const p of portages || []) {
+    if (vus.has(p.seniorId)) continue; vus.add(p.seniorId);
+    const s = parId[p.seniorId]; if (!s) continue;
+    const c = copieCoordPortage(s), existant = coordParId[p.seniorId] || {};
+    if (['telFixe', 'telPortable', 'adresse', 'commune', 'appartement'].some(k => (existant[k] || '') !== (c[k] || ''))) A.push({ id: p.seniorId, ...c });
+  }
+  return A;
 }
 /**
  * Compare les fiches et les documents « portage » et dit quoi écrire, SANS jamais changer l'état d'un bénéficiaire :
@@ -911,9 +929,9 @@ export function planSynchroPortage(seniors, portages, { auj, par = '', le = '', 
       A.push(avecEvenementPortage(base, premiere ? { type: 'debut', date: `${ANNEE_REFERENCE_PORTAGE - 1}-12-31`, avant: true, par, le } : { type: 'debut', date: auj, par, le }));
       continue;
     }
-    const copie = copiePortage(s), change = ['nom', 'prenom', 'sexe', 'anneeNaissance', 'precision'].some(k => p[k] !== copie[k]) || JSON.stringify(p.jours || []) !== JSON.stringify(copie.jours);
-    // une fiche sans portage garde ses jours déjà recopiés (l'historique reste lisible) : on ne met à jour que nom, sexe, année de naissance
-    if (change) A.push({ ...p, ...(s.portage ? copie : { nom: copie.nom, prenom: copie.prenom, sexe: copie.sexe, anneeNaissance: copie.anneeNaissance }), id: p.id });
+    const copie = copiePortage(s), change = ['nom', 'prenom', 'sexe', 'anneeNaissance', 'statut', 'precision'].some(k => p[k] !== copie[k]) || JSON.stringify(p.jours || []) !== JSON.stringify(copie.jours);
+    // une fiche sans portage garde ses jours déjà recopiés (l'historique reste lisible) : on ne met à jour que nom, sexe, année de naissance, statut
+    if (change) A.push({ ...p, ...(s.portage ? copie : { nom: copie.nom, prenom: copie.prenom, sexe: copie.sexe, anneeNaissance: copie.anneeNaissance, statut: copie.statut }), id: p.id });
   }
   return A;
 }

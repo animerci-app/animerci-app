@@ -37,6 +37,8 @@ export function besoins(c) {
     if (c.ongletPortage === 'echanges') { const an = c.anPortage || c.auj.slice(0, 4); add('portageEchanges', `an-${an}`, [['date', '>=', `${an}-01-01`], ['date', '<=', `${an}-12-31`]]); }
     if (c.ongletPortage === 'journal') { const an = c.anPortage || c.auj.slice(0, 4); add('portageJournal', `an-${an}`, [['date', '>=', `${an}-01-01`], ['date', '<=', `${an}-12-31`]]); }
     if (c.role === 'admin') add('seniors', 'all');
+    // Coordonnées du portage (téléphone, adresse ; v1.32.0) : administratrice et bénévoles (étudiant·es, services civiques, stagiaires compris : même rôle) seulement, jamais les intervenant·es.
+    if (c.role === 'admin' || c.role === 'benevole') add('portageCoord', 'all');
   };
   // Lien social (lot B second temps, v1.24.0) : administratrice seule. Les contacts de l'année affichée.
   const lienSocial = () => {

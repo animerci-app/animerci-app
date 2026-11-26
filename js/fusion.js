@@ -56,6 +56,7 @@ export async function fusionner(A, B) {
   // 6. le doublon va à la corbeille, et ses homonymes éventuels sont réétiquetés
   await mettreCorbeille('seniors', B, { inscriptions: insB, portage: pgB });
   for (const r of pgB) await store.remove('portage', r.id);
+  try { await store.remove('portageCoord', B.id); } catch (e) { /* pas de coordonnées de portage pour ce doublon, ou module non autorisé */ }
   await store.remove('seniors', B.id);
   for (const p of [Aap, ...L.homonymes(Aap, reste)]) {
     const n = L.nomSenior(p, reste.map(s => s.id === A.id ? Aap : s));

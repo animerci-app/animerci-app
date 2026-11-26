@@ -14,7 +14,9 @@ const NOMS = [
   ['Vandenbussche','Hélène','F','adherent','1957-03-09'], ['Ducatel','Josiane','F','adherent','1951-12-28'],
   ['Lemaire','Nicole','F','adherent','1945-07-14'], ['Verhaeghe','Arlette','F','adherent','1954-01-31'],
   ['Cools','Bernadette','F','adherent','1943-05-06'], ['Mahieu','Thérèse','F','adherent','1956-09-20'],
-  ['Roussel','André','H','adherent','1947-02-12'], ['Lecomte','Roger','H','adherent','1949-06-26']
+  ['Roussel','André','H','adherent','1947-02-12'], ['Lecomte','Roger','H','adherent','1949-06-26'],
+  // s21 : « Autre public » bénéficiaire du portage, pour vérifier que le filtre « Autres » de l'écran Personnes (1.31.0) ne la compte pas (elle apparaît dans « Portage de repas »)
+  ['Carton','Micheline','F','autre','1940-10-11']
 ];
 
 export function donneesDemo() {
@@ -124,7 +126,7 @@ export function donneesDemo() {
     { id: 'mv-2', materielId: 'm-caf', materielNom: 'Café moulu', date: plusJours(-3), sens: 'sortie', quantite: 3, lot: '', motif: 'Atelier', note: '', apres: 3, par: 'Démonstration', parUid: '', creeLe: plusJours(-3) + 'T14:00:00.000Z' }
   ];
   // Portage de repas (lot B) : cinq bénéficiaires fictifs (en cours depuis avant 2026, interrompue dont la reprise prévue est dépassée, interrompue, arrêtée, récente) et deux échanges avec un prestataire fictif.
-  const JOURS_DEMO = { s2: [0, 1, 2, 3, 4], s5: [0, 2, 4], s8: [0, 1, 2, 3, 4, 5, 6], s12: [1, 3], s14: [0, 2, 4] };
+  const JOURS_DEMO = { s2: [0, 1, 2, 3, 4], s5: [0, 2, 4], s8: [0, 1, 2, 3, 4, 5, 6], s12: [1, 3], s14: [0, 2, 4], s21: [0, 3] };
   for (const sn of seniors) if (JOURS_DEMO[sn.id]) sn.portage = { jours: JOURS_DEMO[sn.id], precision: '' };
   const par = 'Démonstration', le = new Date().toISOString(), avant = { type: 'debut', date: `${ANNEE_REFERENCE_PORTAGE - 1}-12-31`, avant: true, par, le };
   const pg = (id, ...evts) => evts.reduce((d, e) => avecEvenementPortage(d, { par, le, ...e }), { id, ...copiePortage(seniors.find(x => x.id === id)), historique: [] });

@@ -19,7 +19,7 @@ const fr = d => (d && /^\d{4}-\d{2}-\d{2}/.test(d) ? d.slice(8, 10) + '/' + d.sl
 // Données complètes pour une sauvegarde : lues directement dans la base (l'écran, lui, ne charge que ce qu'il affiche).
 let SAUV = null;
 async function lireTout() {
-  const T = {}, cols = ['seniors', 'activites', 'inscriptions', 'seances', 'fiches', 'taches', 'contacts', 'echanges', 'conventions', 'materiel', 'emprunts', 'mouvements', 'portage', 'portageEchanges', 'portageJournal', 'lienSocial', 'accueils', 'depenses', 'regie', 'questionnaires', 'reponsesQuestionnaire', 'voyages', 'users', 'parametres'];
+  const T = {}, cols = ['seniors', 'activites', 'inscriptions', 'seances', 'fiches', 'taches', 'contacts', 'echanges', 'conventions', 'materiel', 'emprunts', 'mouvements', 'portage', 'portageCoord', 'portageEchanges', 'portageJournal', 'lienSocial', 'accueils', 'depenses', 'regie', 'questionnaires', 'reponsesQuestionnaire', 'voyages', 'users', 'parametres'];
   for (const c of cols) T[c] = await store.lire(c);
   T.corbeille = []; T.journal = [];
   return T;
@@ -185,6 +185,8 @@ export function lireSauvegarde(texte) {
   // facultatif : absent des sauvegardes d'avant la 1.20.0
   out.accueils = Array.isArray(d.accueils) ? d.accueils.filter(r => r && r.id && !/[\/]/.test(String(r.id))) : [];
   for (const c of ['portage', 'portageEchanges']) out[c] = Array.isArray(d[c]) ? d[c].filter(r => r && r.id && !/[\/]/.test(String(r.id))) : [];
+  // facultatif : absent des sauvegardes d'avant la 1.32.0 (coordonnées du portage, dans leur propre collection)
+  out.portageCoord = Array.isArray(d.portageCoord) ? d.portageCoord.filter(r => r && r.id && !/[\/]/.test(String(r.id))) : [];
   // facultatifs : absents des sauvegardes d'avant la 1.24.0
   for (const c of ['portageJournal', 'lienSocial']) out[c] = Array.isArray(d[c]) ? d[c].filter(r => r && r.id && !/[\/]/.test(String(r.id))) : [];
   for (const c of ['materiel', 'emprunts', 'mouvements']) out[c] = Array.isArray(d[c]) ? d[c].filter(r => r && r.id && !/[\/]/.test(String(r.id))) : [];
@@ -259,11 +261,11 @@ export function brancher() {
     const fic = f.files[0]; if (!fic) return;
     try {
       const { donnees, date } = lireSauvegarde(await fic.text());
-      const total = COLS_SAUVEES.concat('parametres', 'contacts', 'echanges', 'conventions', 'materiel', 'emprunts', 'mouvements', 'portage', 'portageEchanges', 'portageJournal', 'lienSocial', 'accueils', 'depenses', 'regie', 'questionnaires', 'reponsesQuestionnaire', 'voyages').reduce((n, c) => n + donnees[c].length, 0);
+      const total = COLS_SAUVEES.concat('parametres', 'contacts', 'echanges', 'conventions', 'materiel', 'emprunts', 'mouvements', 'portage', 'portageCoord', 'portageEchanges', 'portageJournal', 'lienSocial', 'accueils', 'depenses', 'regie', 'questionnaires', 'reponsesQuestionnaire', 'voyages').reduce((n, c) => n + donnees[c].length, 0);
       const resume = COLS_SAUVEES.map(c => `${donnees[c].length} ${c}`).join(', ');
       confirmer('Restaurer cette sauvegarde ?', `Sauvegarde du ${date ? fr(date.slice(0, 10)) : '?'} : ${resume}. ${total > 15000 ? 'Attention : volume supérieur au quota quotidien gratuit d\'écritures.' : ''} Les données seront ajoutées ou remises à jour, sans rien supprimer.`, 'Restaurer', async () => {
         let n = 0, deja = 0;
-        for (const c of COLS_SAUVEES.concat('parametres', 'contacts', 'echanges', 'conventions', 'materiel', 'emprunts', 'mouvements', 'portage', 'portageEchanges', 'portageJournal', 'lienSocial', 'accueils', 'depenses', 'regie', 'questionnaires', 'reponsesQuestionnaire', 'voyages')) for (const r of donnees[c]) {
+        for (const c of COLS_SAUVEES.concat('parametres', 'contacts', 'echanges', 'conventions', 'materiel', 'emprunts', 'mouvements', 'portage', 'portageCoord', 'portageEchanges', 'portageJournal', 'lienSocial', 'accueils', 'depenses', 'regie', 'questionnaires', 'reponsesQuestionnaire', 'voyages')) for (const r of donnees[c]) {
           // Les mouvements de stock ne sont pas modifiables (règles Firestore) : un mouvement déjà présent est laissé tel quel.
           if (c === 'mouvements') { try { await store.save(c, r); } catch (e) { deja++; } } else await store.save(c, r);
           if (++n % 50 === 0) toast(`Restauration… ${n}/${total}`);

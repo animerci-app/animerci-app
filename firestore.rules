@@ -8,6 +8,7 @@ rules_version = '2';
 //  - partenaire   : (accès ouvert par l'administratrice, p. ex. pour un essai) lit et saisit SES propres échanges, rien d'autre
 //  - matériel (v1.17.0, accès à cocher depuis la v1.20.0) : l'administratrice, et les intervenant·es et bénévoles dont l'accès est coché, lisent et saisissent le matériel, les emprunts et les mouvements de stock ; seule l'administratrice supprime
 //  - portage (v1.19.0, accès à cocher depuis la v1.20.0) : l'administratrice, et les intervenant·es et bénévoles dont l'accès est coché, lisent et saisissent le suivi des bénéficiaires du portage de repas et les échanges avec le prestataire ; seule l'administratrice supprime
+//  - coordonnées du portage (v1.32.0) : téléphone et adresse des bénéficiaires, réservés à l'administratrice et aux bénévoles (accès « portage » coché) ; jamais aux intervenant·es ni aux partenaires
 //  - accès provisoires (v1.20.0) : l'administratrice coche, par compte intervenant·e ou bénévole, Matériel, Portage de repas ou (bénévoles seulement) Saisie des inscriptions, avec une date de fin facultative (champs acces et accesFin du profil).
 //                   Sans case cochée, ces rôles gardent leurs droits d'origine (planning ; activités et appels pour les intervenant·es).
 //  - accueils (v1.20.0) : jeunes adultes (bourse), services civiques, stagiaires : administratrice uniquement
@@ -31,6 +32,8 @@ service cloud.firestore {
         && (!('accesFin' in profil()) || profil().accesFin == 0 || profil().accesFin >= dateDuJour());
     }
     function accesInscriptions() { return role() == 'benevole' && acces('inscriptions'); }
+    // Depuis 1.32.0 : coordonnées du portage réservées à l'administratrice et aux bénévoles (étudiant·es, services civiques et stagiaires compris : même rôle), jamais aux intervenant·es.
+    function accesCoordPortage() { return role() == 'benevole' && acces('portage'); }
 
     // Profil : chacun lit le sien ; seul l'admin lit/écrit les autres.
     match /users/{uid} {
@@ -125,6 +128,14 @@ service cloud.firestore {
     match /portage/{id} {
       allow read, create, update: if equipePortage();
       allow delete: if estAdmin();
+    }
+    // Coordonnées du portage (v1.32.0) : téléphone et adresse de chaque bénéficiaire, recopiés automatiquement depuis sa fiche Personnes (aucune double saisie).
+    // Collection séparée du document « portage » ci-dessus : Firestore ne permet pas de cacher certains champs à l'intérieur d'un même document, donc ces coordonnées,
+    // plus sensibles que le reste du suivi, vivent à part pour pouvoir rester fermées aux intervenant·es (ni aux partenaires, comme pour tout Portage).
+    // Un document par bénéficiaire (même identifiant que sa fiche Personnes) ; seule l'administratrice écrit (recopie automatique, jamais saisi par l'équipe).
+    match /portageCoord/{id} {
+      allow read: if estAdmin() || accesCoordPortage();
+      allow write: if estAdmin();
     }
     match /portageEchanges/{id} {
       allow read, create, update: if equipePortage();

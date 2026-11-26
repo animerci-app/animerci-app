@@ -59,7 +59,7 @@ const ACCUEIL = { admin: 'home', intervenant: 'activites', benevole: 'planning',
 /* ---------- Données ---------- */
 // Chargement à la demande : on ne s'abonne qu'à ce que l'écran ouvert affiche (voir donnees.js). Chaque abonnement n'est créé qu'une fois.
 let unsubs = [], parts = {}, actifs = new Set(), minuteurPurge = null, rendu = false;
-const COLS_ECOUTE = COLS.concat(['users', 'corbeille', 'journal', 'parametres', 'contacts', 'echanges', 'conventions', 'materiel', 'emprunts', 'mouvements', 'portage', 'portageEchanges', 'portageJournal', 'lienSocial', 'accueils', 'seniorsLite', 'depenses', 'regie', 'questionnaires', 'reponsesQuestionnaire', 'voyages', 'residencePersonnel', 'residenceFamilles', 'residenceResidents', 'residenceJournal', 'residenceRemplacements', 'residenceInterventions']);
+const COLS_ECOUTE = COLS.concat(['users', 'corbeille', 'journal', 'parametres', 'contacts', 'echanges', 'conventions', 'materiel', 'emprunts', 'mouvements', 'portage', 'portageCoord', 'portageEchanges', 'portageJournal', 'lienSocial', 'accueils', 'seniorsLite', 'depenses', 'regie', 'questionnaires', 'reponsesQuestionnaire', 'voyages', 'residencePersonnel', 'residenceFamilles', 'residenceResidents', 'residenceJournal', 'residenceRemplacements', 'residenceInterventions']);
 function planifierRendu() { if (rendu) return; rendu = true; Promise.resolve().then(() => { rendu = false; render(); }); }
 function listen(col, key, filtre, opts) {
   unsubs.push(store.subscribe(col, (rows, err) => {

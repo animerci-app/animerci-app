@@ -38,7 +38,7 @@ function effectifsCard() {
   return `<div class="card" style="margin-top:16px"><h2>Effectifs</h2>
     ${ligne('Adhérent·es', e && e.adherents, 'seniors')}${ligne('Résident·es', e && e.residents, 'seniors')}${ligne('Autres publics', e && e.autre, 'seniors')}${ligne('Annuaire (bénévoles, intervenant·es, partenaires, collègues)', e && e.annuaire, 'annuaire')}
     ${moduleActif('portage') ? `<button class="stat-row" style="width:100%;background:none;border:0;border-top:1px solid var(--ligne);text-align:left;cursor:pointer" data-action="nav" data-v="portage"><span class="lab">Portage de repas</span><span class="v">${nbPortage === null ? '—' : nbPortage}</span></button>` : ''}
-    <p class="sub" style="margin:8px 0 0">Comptés automatiquement, mis à jour à chaque ouverture de l'accueil.${moduleActif('portage') ? ' Portage : bénéficiaires actuellement en service, affiché après une première visite de cet écran dans la session — nombre différent de celui du filtre « Portage de repas » de l\'écran Personnes, qui compte toutes les fiches cochées.' : ''}</p></div>`;
+    <p class="sub" style="margin:8px 0 0">Comptés automatiquement, mis à jour à chaque ouverture de l'accueil.${moduleActif('portage') ? ' Portage : bénéficiaires actuellement en service, affiché après une première visite de cet écran dans la session — nombre différent du filtre « Tous » de Portage › Bénéficiaires, qui compte toutes les fiches cochées, y compris un service interrompu ou arrêté (depuis 1.32.0, ce comptage n\'est plus sur l\'écran Personnes).' : ''}</p></div>`;
 }
 export function accueil() {
   const auj = aujourdhui(), sem = ajouterJours(auj, 7);
@@ -84,7 +84,8 @@ export const ficheId = (actId, seniorId) => `${actId}_${seniorId}`;
 /* ============ SÉNIORS ============ */
 function listeSeniors() {
   const q = S.recherche.trim();
-  let rows = S.cache.seniors.filter(s => S.filtreStatut === 'tous' || (S.filtreStatut === 'portage' ? !!s.portage : s.statut === S.filtreStatut));
+  // depuis 1.32.0 : le filtre « Portage de repas » a été retiré de cet écran (voir Portage → Bénéficiaires) ; « Autres » redevient une simple lecture du statut.
+  let rows = S.cache.seniors.filter(s => S.filtreStatut === 'tous' || s.statut === S.filtreStatut);
   // recherche au fil de la frappe : nom, prénom, nom de jeune fille, date de naissance (jj/mm/aaaa, aaaa…)
   if (q) { const ids = new Set(L.filtrer(rows.map(itemPersonne), q, 100000).liste.map(x => x.id)); rows = rows.filter(s => ids.has(s.id)); }
   rows.sort(L.comparerPatronyme);
@@ -119,15 +120,14 @@ function seniorsListe() {
     <div class="quick"><button class="btn" data-action="senior-form">+ Nouvelle personne</button><button class="btn sec" data-action="importer" data-cible="seniors">Importer une liste</button><button class="btn sec" data-action="export-seniors">Exporter (Excel)</button></div></div>
   ${adhs.barreOnglets()}
   <input class="search" id="rech" type="search" placeholder="Chercher : nom, prénom, nom de jeune fille, date de naissance (jj/mm/aaaa ou année)…" aria-label="Chercher une personne" value="${esc(S.recherche)}">
-  <div class="filters">${(() => { const n = k => k === 'tous' ? S.cache.seniors.length : k === 'portage' ? S.cache.seniors.filter(s => !!s.portage).length : S.cache.seniors.filter(s => s.statut === k).length;
-    return [['tous', 'Tous'], ['adherent', 'Adhérents'], ['resident', 'Résidents'], ['autre', 'Autres'], ['portage', 'Portage de repas']].map(([k, l]) => `<button data-action="filtre-statut" data-v="${k}" aria-pressed="${S.filtreStatut === k}">${l} (${n(k)})</button>`).join(''); })()}</div>
-  ${S.filtreStatut === 'portage' ? `<p class="sub" style="margin:-6px 0 10px">« Portage de repas » compte ici toutes les fiches où la case est cochée, même si le service est arrêté. Le nombre affiché sur l'accueil et dans Portage › Statistiques annuelles ne compte, lui, que les bénéficiaires actuellement en service : les deux sont justes, mais ne mesurent pas tout à fait la même chose.</p>` : ''}
+  <div class="filters">${(() => { const n = k => k === 'tous' ? S.cache.seniors.length : S.cache.seniors.filter(s => s.statut === k).length;
+    return [['tous', 'Tous'], ['adherent', 'Adhérents'], ['resident', 'Résidents'], ['autre', 'Autres']].map(([k, l]) => `<button data-action="filtre-statut" data-v="${k}" aria-pressed="${S.filtreStatut === k}">${l} (${n(k)})</button>`).join(''); })()}</div>
   <div id="liste">${listeSeniors()}</div>`;
 }
 export function afterSeniors() { adhs.migrer(); adhs.apresAdhesions(); const r = $('#rech'); if (r) r.oninput = () => { S.recherche = r.value; $('#liste').innerHTML = listeSeniors(); }; }
 
-function seniorForm(id) {
-  const s = id ? seniorDe(id) : { statut: 'adherent', sexe: '', commune: P('commune.defaut') };
+function seniorForm(id, portageParDefaut) {
+  const s = id ? seniorDe(id) : { statut: 'adherent', sexe: '', commune: P('commune.defaut'), portage: portageParDefaut ? { jours: [], precision: '' } : null };
   const anCour = Number(aujourdhui().slice(0, 4)), histo = L.adhesionsDe(s), tel = L.telephones(s), prox = L.prochesDe(s);
   const annees = [...new Set([...histo.map(a => a.annee), anCour, L.anneeCible(aujourdhui(), P('adhesion.relanceMois'))])].sort((a, b) => b - a);
   const adhDe = an => histo.find(a => a.annee === an) || { annee: an, date: aujourdhui(), montant: P('adhesion.montantDefaut'), paye: false, mode: '', datePaiement: '' };
@@ -448,7 +448,7 @@ function exportBilan() {
 /* ============ ACTIONS ============ */
 export const actions = {
   nav: el => { if (el.dataset.tab) { if (el.dataset.v === 'materiel') S.ongletMat = el.dataset.tab; else if (el.dataset.v === 'seniors') S.ongletSen = el.dataset.tab; else if (el.dataset.v === 'portage') S.ongletPortage = el.dataset.tab; else if (el.dataset.v === 'accueils') S.ongletAccueils = el.dataset.tab; else if (el.dataset.v === 'residence') S.ongletRes = el.dataset.tab; else S.ongletPart = el.dataset.tab; } go(el.dataset.v); },
-  'senior-form': el => seniorForm(el.dataset.id),
+  'senior-form': el => seniorForm(el.dataset.id, el.dataset.portage === '1'),
   'export-seniors': () => exportSeniors(),
   'filtre-statut': el => { S.filtreStatut = el.dataset.v; render(); },
   'tache-form': el => tacheForm(el.dataset.id),
